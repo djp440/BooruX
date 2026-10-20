@@ -24,9 +24,7 @@ logs/
 .DS_Store
 Thumbs.db
 .agent-media/
-# 前端依赖与工具缓存
-frontend/node_modules/
-frontend/.vite/
-frontend/test-results/
+.playwright-cli/
+# 工具缓存与本地记录
 .e2e-data/
 .codebase-memory/

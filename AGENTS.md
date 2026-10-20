@@ -1,13 +1,7 @@
-## Agent skills
+# BooruX
 
-### Issue tracker
-
-Issues 记录在 GitHub Issues（djp440/BooruX），使用 `gh` CLI。See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-使用默认的五个 triage 标签（needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix）。See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-single-context：仓库根目录一份 `GLOSSARY.md` + `docs/adr/`。See `docs/agents/domain.md`.
+- 当前以 `server-go/` 为重写起点，保留 Go 服务、测试和内嵌 Web 资源。
+- 后端入口：在 `server-go/` 运行 `go run .`；测试命令：`go test ./...`。
+- 运行数据与密钥不得提交；沿用 `.gitignore` 中的保护规则。
+- Issues 记录在 GitHub Issues（`djp440/BooruX`），使用 `gh` CLI。
+- 使用五个 triage 标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。
