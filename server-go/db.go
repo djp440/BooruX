@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -590,7 +591,17 @@ const bookmarkSelect = `SELECT p.* FROM posts p JOIN profile_bookmarks pb ON pb.
 
 func getBookmarkedPosts(q querier, profileID string) []M {
 	rows, _ := queryMaps(q, bookmarkSelect, profileID)
-	return formatPosts(q, rows, profileID)
+	return filterBookmarkedPosts(formatPosts(q, rows, profileID), getProfileSettings(q, profileID))
+}
+
+func filterBookmarkedPosts(posts []M, settings M) []M {
+	out := make([]M, 0, len(posts))
+	for _, post := range posts {
+		if (settings["rating"] == "all" || str(post["rating"]) == orDefault(str(settings["rating"]), "general")) && isPostAllowed(post, settings["tagFilter"]) {
+			out = append(out, post)
+		}
+	}
+	return out
 }
 
 func getBookmarkSnapshots(q querier, profileID string) []M {
@@ -809,4 +820,38 @@ func setWebDAVConfig(q querier, c WebDAVConfig) error {
 		appendServerLog("INFO", "DATABASE", "Saved WebDAV configuration to app_metadata")
 	}
 	return err
+}
+
+// rememberPostForBookmark backfills an online post before a profile bookmark is written.
+func rememberForBookmark(db *sql.DB, post M) (M, error) {
+	if _, err := syncDanbooruToDB(db, []M{post}); err != nil {
+		return nil, err
+	}
+	return post, nil
+}
+
+func fetchAndRememberForBookmark(ctx context.Context, db *sql.DB, id string) (M, error) {
+	rawID, source := id, "danbooru"
+	if prefix, suffix, ok := strings.Cut(id, "-"); ok {
+		source, rawID = prefix, suffix
+	}
+	if source != "danbooru" {
+		return nil, nil
+	}
+	posts, err := fetchDanbooruPosts(ctx, danbooruOptions{Tags: "id:" + rawID, Limit: 1, Rating: "all", ThrowOnFailure: true})
+	if err != nil || len(posts) == 0 {
+		return nil, err
+	}
+	return rememberForBookmark(db, posts[0])
+}
+
+func rememberPostForBookmark(ctx context.Context, db *sql.DB, profileID, id string, localOnly bool) (M, error) {
+	if localOnly {
+		return nil, nil
+	}
+	post, err := fetchAndRememberForBookmark(ctx, db, id)
+	if err != nil || post == nil {
+		return nil, err
+	}
+	return setBookmark(db, profileID, id, true)
 }

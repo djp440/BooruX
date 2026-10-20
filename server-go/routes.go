@@ -242,6 +242,9 @@ func (s *server) postRoutes(mux *http.ServeMux) {
 				want = cur["isBookmarked"] != true
 			}
 			post, err = setBookmark(s.db, pid, id, want)
+			if err == nil && post == nil && want {
+				post, err = rememberPostForBookmark(r.Context(), s.db, pid, id, localOnly(r))
+			}
 		} else {
 			post, err = toggleBookmarkLegacy(s.db, id)
 		}
@@ -282,6 +285,10 @@ func (s *server) postRoutes(mux *http.ServeMux) {
 }
 
 // ---------- profiles ----------
+
+func localOnly(r *http.Request) bool {
+	return r.URL.Query().Get("source") == "local"
+}
 
 func readSettingsBody(b M) M {
 	if b == nil {

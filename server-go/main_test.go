@@ -413,3 +413,60 @@ func TestBuildDanbooruQueryTagsKeepsSpacedQuery(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestBookmarksRespectProfileRating(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	posts := []M{
+		{"id": "safe", "title": "safe", "artist": "a", "imageUrl": "https://x/1.jpg", "previewUrl": "https://x/1.jpg", "rating": "general", "createdAt": "2026-01-02T00:00:00Z", "tags": []M{}},
+		{"id": "hidden", "title": "hidden", "artist": "a", "imageUrl": "https://x/2.jpg", "previewUrl": "https://x/2.jpg", "rating": "explicit", "createdAt": "2026-01-01T00:00:00Z", "tags": []M{}},
+	}
+	if _, err := syncDanbooruToDB(db, posts); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"safe", "hidden"} {
+		if _, err := setBookmark(db, defaultProfileID, id, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"rating": "general"}); err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	w := do(h, http.MethodGet, "/api/profiles/default/bookmarks", "")
+	var res struct {
+		Count     int
+		Bookmarks []M
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &res) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if res.Count != 1 || len(res.Bookmarks) != 1 || str(res.Bookmarks[0]["id"]) != "safe" {
+		t.Fatalf("bookmarks leaked outside profile rating: %s", w.Body.String())
+	}
+}
+
+func TestBookmarkOnlinePostPersistsForBookmarksRoute(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":42,"rating":"g","image_width":100,"image_height":100,"file_url":"https://x/42.jpg","created_at":"2026-01-01T00:00:00Z","tag_string":"solo"}]`))
+	}))
+	defer upstream.Close()
+	s := &server{db: db, media: newMediaCache(db, t.TempDir()), marketURL: upstream.URL}
+	h := withMiddleware(s.routes())
+	w := do(h, http.MethodPost, "/api/posts/danbooru-42/bookmark?profileId=default", `{"bookmarked":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("bookmark: code=%d body=%q", w.Code, w.Body.String())
+	}
+	w = do(h, http.MethodGet, "/api/profiles/default/bookmarks", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"id":"danbooru-42"`) {
+		t.Fatalf("bookmarks: code=%d body=%q", w.Code, w.Body.String())
+	}
+}

@@ -113,3 +113,15 @@ export const getChildren = (id: string, profileId: string) =>
   request<{ posts?: Partial<Post>[] }>("/api/posts/" + encodeURIComponent(id) + "/children?profileId=" + encodeURIComponent(profileId))
     .then((body) => (body.posts ?? []).map(postFromResponse));
 
+
+export type BookmarkResponse = { post: Post };
+
+export const getBookmarks = (profileId: string) =>
+  request<{ bookmarks?: Partial<Post>[] }>("/api/profiles/" + encodeURIComponent(profileId) + "/bookmarks")
+    .then((body) => (body.bookmarks ?? []).map(postFromResponse));
+
+export const setBookmark = (id: string, profileId: string, bookmarked: boolean) =>
+  request<{ post?: Partial<Post> }>("/api/posts/" + encodeURIComponent(id) + "/bookmark?profileId=" + encodeURIComponent(profileId), {
+    method: "POST",
+    body: JSON.stringify({ bookmarked }),
+  }).then((body) => postFromResponse(body.post ?? {}));
