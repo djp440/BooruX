@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -191,5 +192,146 @@ func TestDanbooruRouteCursorFallsBackToLocal(t *testing.T) {
 	createdAt, pid, _ := decodeCursor(id)
 	if createdAt != "2026-01-03T00:00:00Z" || pid != "danbooru-3" {
 		t.Fatal(createdAt, pid)
+	}
+}
+
+func TestTimelineUsesProfileRatingAndReportsLocalFallback(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := []M{
+		{"id": "danbooru-1", "title": "safe", "artist": "a", "imageUrl": "https://x/1.jpg", "previewUrl": "https://x/1.jpg", "rating": "general", "createdAt": "2026-01-03T00:00:00Z", "tags": []M{}},
+	}
+	_, _ = db.Exec("DELETE FROM posts WHERE id NOT IN ('danbooru-1')")
+	if _, err := syncDanbooruToDB(db, seed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "sqlite", "rating": "general"}); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{db: db, media: newMediaCache(db, t.TempDir())}
+	h := withMiddleware(s.routes())
+
+	w := do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=10", "")
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var res struct {
+		Source, Fallback string
+		Posts            []M
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Source != "sqlite" || res.Fallback != "" || len(res.Posts) != 1 {
+		t.Fatalf("source=%q fallback=%q posts=%d", res.Source, res.Fallback, len(res.Posts))
+	}
+}
+
+func TestTimelineOnlineFailureFallsBackToCacheAndForcesRating(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	posts := []M{
+		{"id": "danbooru-1", "title": "safe", "artist": "a", "imageUrl": "https://x/1.jpg", "previewUrl": "https://x/1.jpg", "rating": "general", "createdAt": "2026-01-03T00:00:00Z", "tags": []M{}},
+		{"id": "danbooru-2", "title": "explicit", "artist": "a", "imageUrl": "https://x/2.jpg", "previewUrl": "https://x/2.jpg", "rating": "explicit", "createdAt": "2026-01-02T00:00:00Z", "tags": []M{}},
+	}
+	if _, err := syncDanbooruToDB(db, posts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "danbooru", "rating": "general"}); err != nil {
+		t.Fatal(err)
+	}
+	var requested string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Query().Get("tags")
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+	s := &server{db: db, media: newMediaCache(db, t.TempDir()), marketURL: upstream.URL}
+	h := withMiddleware(s.routes())
+
+	w := do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=10", "")
+	var res struct {
+		Source, Fallback string
+		Posts            []M
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &res) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if !strings.Contains(requested, "rating:general") || res.Source != "sqlite" || res.Fallback != "online-unavailable" {
+		t.Fatalf("requested=%q source=%q fallback=%q", requested, res.Source, res.Fallback)
+	}
+	for _, p := range res.Posts {
+		if p["rating"] != "general" {
+			t.Fatal("越级作品泄露", p["rating"])
+		}
+	}
+}
+
+func TestTimelineOnlineRatingMismatchFallsBackSafely(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":7,"rating":"e","image_width":100,"image_height":100,"file_url":"https://x/7.jpg","created_at":"2026-01-01T00:00:00Z"}]`))
+	}))
+	defer upstream.Close()
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	s := &server{db: db, media: newMediaCache(db, t.TempDir()), marketURL: upstream.URL}
+	h := withMiddleware(s.routes())
+	w := do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=10", "")
+	var res struct {
+		Source   string
+		Fallback string
+		Posts    []M
+	}
+	if json.Unmarshal(w.Body.Bytes(), &res) != nil {
+		t.Fatal(w.Body.String())
+	}
+	if res.Source != "sqlite" || res.Fallback != "rating-filtered" || len(res.Posts) != 0 {
+		t.Fatalf("source=%q fallback=%q posts=%d", res.Source, res.Fallback, len(res.Posts))
+	}
+}
+
+func TestTimelineLocalCursorContinuesWithoutResetting(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	var posts []M
+	for i := 1; i <= 3; i++ {
+		posts = append(posts, M{"id": "post-" + string(rune('0'+i)), "title": "t", "artist": "a", "imageUrl": "https://x/" + string(rune('0'+i)), "previewUrl": "https://x/" + string(rune('0'+i)), "rating": "general", "createdAt": "2026-01-0" + string(rune('0'+i)) + "T00:00:00Z", "tags": []M{}})
+	}
+	if _, err := syncDanbooruToDB(db, posts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "sqlite"}); err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	w := do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=2", "")
+	var first struct {
+		Posts      []M
+		NextCursor string
+	}
+	if json.Unmarshal(w.Body.Bytes(), &first) != nil || len(first.Posts) != 2 || first.NextCursor == "" {
+		t.Fatal(w.Body.String())
+	}
+	w = do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=2&cursor="+url.QueryEscape(first.NextCursor), "")
+	var second struct {
+		Posts      []M
+		NextCursor string
+	}
+	if json.Unmarshal(w.Body.Bytes(), &second) != nil || len(second.Posts) != 1 || second.NextCursor != "" {
+		t.Fatal(w.Body.String())
+	}
+	if str(second.Posts[0]["id"]) != "post-1" {
+		t.Fatal(second.Posts[0]["id"])
 	}
 }

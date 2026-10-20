@@ -4,6 +4,28 @@ export type Rating = "general" | "sensitive" | "questionable" | "explicit" | "al
 export type DataSource = "danbooru" | "sqlite";
 
 export type Profile = { id: string; name: string };
+export type Post = {
+  id: string;
+  title: string;
+  artist: string;
+  imageUrl: string;
+  previewUrl: string;
+  aspectRatio: number;
+  width: number;
+  height: number;
+  isBookmarked: boolean;
+  rating: Exclude<Rating, "all">;
+  createdAt: string;
+  description?: string;
+  mediaType: "image" | "gif" | "video";
+  tags?: { id: string; name: string; category: string }[];
+};
+export type TimelinePage = {
+  posts: Post[];
+  nextCursor: string;
+  source: "danbooru" | "sqlite";
+  fallback?: "online-unavailable" | "rating-filtered" | "";
+};
 export type Settings = {
   language?: Language;
   themeMode?: ThemeMode;
@@ -38,4 +60,15 @@ export const saveSettings = (profileId: string, settings: Settings) =>
     method: "PUT",
     body: JSON.stringify(settings),
   }).then((body) => body.settings ?? {});
+
+export const getTimeline = (profileId: string, cursor?: string) => {
+  const params = new URLSearchParams({ profileId, limit: "12" });
+  if (cursor) params.set("cursor", cursor);
+  return request<Partial<TimelinePage>>("/api/danbooru/posts?" + params).then((body) => ({
+    posts: body.posts ?? [],
+    nextCursor: body.nextCursor ?? "",
+    source: body.source ?? "sqlite",
+    fallback: body.fallback ?? "",
+  }));
+};
 
