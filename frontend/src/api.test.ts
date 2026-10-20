@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { getPost, HttpError, postFromResponse } from "./api";
+import { getPost, getTimeline, HttpError, postFromResponse } from "./api";
 
 test("detail response normalizes missing optional fields", () => {
   const post = postFromResponse({ id: "post-1", title: "One", mediaType: "video" });
@@ -23,6 +23,7 @@ test("detail request carries the active profile", async () => {
     globalThis.fetch = original;
   }
 });
+
 test("detail 404 stays distinguishable from a connection failure", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify({ error: "Post not found" }), { status: 404 })) as unknown as typeof fetch;
@@ -33,6 +34,21 @@ test("detail 404 stays distinguishable from a connection failure", async () => {
     } catch (error) {
       expect((error as HttpError).status).toBe(404);
     }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("timeline-style search carries the query and cursor", async () => {
+  const original = globalThis.fetch;
+  let requested = "";
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requested = String(input);
+    return new Response(JSON.stringify({ posts: [], nextCursor: "", source: "sqlite" }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await getTimeline("profile one", "next cursor", "cat_ears blue_eyes");
+    expect(requested).toBe("/api/danbooru/posts?profileId=profile+one&limit=12&cursor=next+cursor&tags=cat_ears+blue_eyes");
   } finally {
     globalThis.fetch = original;
   }

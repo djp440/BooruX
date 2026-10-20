@@ -377,3 +377,39 @@ func TestTimelineLocalCursorContinuesWithoutResetting(t *testing.T) {
 		t.Fatal(second.Posts[0]["id"])
 	}
 }
+
+func TestDanbooruSearchRequiresEveryTagAndKeepsRatingBoundary(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	posts := []M{
+		{"id": "danbooru-1", "title": "both", "artist": "a", "imageUrl": "https://x/1.jpg", "previewUrl": "https://x/1.jpg", "rating": "general", "createdAt": "2026-01-03T00:00:00Z", "tags": []M{{"id": "tag-cat", "name": "cat_ears", "category": "general"}, {"id": "tag-blue", "name": "blue_eyes", "category": "general"}}},
+		{"id": "danbooru-2", "title": "one", "artist": "a", "imageUrl": "https://x/2.jpg", "previewUrl": "https://x/2.jpg", "rating": "general", "createdAt": "2026-01-02T00:00:00Z", "tags": []M{{"id": "tag-cat", "name": "cat_ears", "category": "general"}}},
+		{"id": "danbooru-3", "title": "explicit both", "artist": "a", "imageUrl": "https://x/3.jpg", "previewUrl": "https://x/3.jpg", "rating": "explicit", "createdAt": "2026-01-01T00:00:00Z", "tags": []M{{"id": "tag-cat", "name": "cat_ears", "category": "general"}, {"id": "tag-blue", "name": "blue_eyes", "category": "general"}}},
+	}
+	if _, err := syncDanbooruToDB(db, posts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "sqlite", "rating": "general"}); err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	w := do(h, http.MethodGet, "/api/danbooru/posts?profileId=default&limit=10&tags="+url.QueryEscape("cat_ears blue_eyes"), "")
+	var res struct {
+		Posts []M
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &res) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if len(res.Posts) != 1 || str(res.Posts[0]["id"]) != "danbooru-1" {
+		t.Fatalf("expected only the general post with both tags, got %#v", res.Posts)
+	}
+}
+
+func TestBuildDanbooruQueryTagsKeepsSpacedQuery(t *testing.T) {
+	if got := buildDanbooruQueryTags(" cat_ears  blue_eyes ", "general"); got != "cat_ears blue_eyes rating:general" {
+		t.Fatalf("got %q", got)
+	}
+}
