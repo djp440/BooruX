@@ -16,5 +16,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
-  }
+  },
+  "type": "module"
 }

@@ -71,7 +71,7 @@ func merge(base M, extra M) M {
 	return base
 }
 
-func (s *server) routes() http.Handler {
+func (s *server) apiRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +115,10 @@ func (s *server) routes() http.Handler {
 	s.webdavRoutes(mux)
 	s.aiRoutes(mux)
 	return mux
+}
+
+func (s *server) routes() http.Handler {
+	return s.webHandler(s.apiRoutes())
 }
 
 // ---------- posts ----------
