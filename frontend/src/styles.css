@@ -37,6 +37,30 @@ h2 { margin: 0 0 8px; font-size: 1rem; }
 .right-rail { grid-column: 3; grid-row: 2; position: sticky; top: 16px; align-self: start; }
 .text-link { color: var(--accent); font-weight: 600; }
 .mobile-nav { display: none; }
+.timeline-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.source-pill { flex: none; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .72rem; font-weight: 700; }
+.source-sqlite { color: #ffd166; border-color: #66501f; }
+.timeline-list { display: grid; }
+.post-card { min-width: 0; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+.post-author { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: .82rem; }
+.artist-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%; background: #25292e; color: white; font-weight: 700; }
+.artist-name { min-width: 0; overflow: hidden; color: #e7e9ea; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.post-author time { flex: none; }
+.bookmark-state { margin-left: auto; color: #ffd166; font-size: .72rem; }
+.post-title { margin: 12px 0 5px; font-size: 1rem; }
+.post-description { margin: 0 0 12px; color: var(--muted); font-size: .88rem; line-height: 1.5; }
+.post-media { position: relative; overflow: hidden; width: 100%; max-height: 620px; border: 1px solid var(--border); border-radius: 16px; background: #111; }
+.post-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-badge { position: absolute; right: 10px; bottom: 10px; padding: 4px 8px; border-radius: 999px; background: rgba(0,0,0,.78); color: white; font-size: .7rem; font-weight: 700; }
+.post-tags { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; color: var(--accent); font-size: .78rem; }
+.post-tags a { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fallback-note { margin: 0; padding: 10px 24px; border-bottom: 1px solid var(--border); background: #1d1a12; color: #ffd166; font-size: .8rem; }
+.timeline-state { display: grid; place-items: center; min-height: 180px; padding: 32px; color: var(--muted); text-align: center; }
+.timeline-state p { margin: 0 0 12px; }
+.timeline-state button, .load-more button { padding: 9px 18px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: #e7e9ea; font: inherit; cursor: pointer; }
+.load-more { display: grid; place-items: center; padding: 18px; }
+.load-more button:disabled { opacity: .5; cursor: wait; }
+.end-state { padding: 18px; color: var(--muted); text-align: center; font-size: .85rem; }
 @media (max-width: 1050px) {
   .app-shell { grid-template-columns: 76px minmax(0, 1fr); gap: 0; padding: 0 12px; }
   .right-rail { display: none; }
@@ -52,6 +76,13 @@ h2 { margin: 0 0 8px; font-size: 1rem; }
   .mobile-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; z-index: 20; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--border); background: rgba(11, 11, 11, .96); padding: 6px 4px max(6px, env(safe-area-inset-bottom)); backdrop-filter: blur(12px); }
   .mobile-nav a { flex-direction: column; justify-content: center; gap: 2px; min-height: 52px; padding: 3px; border-radius: 10px; font-size: .66rem; }
   .mobile-nav svg { width: 21px; height: 21px; }
+  .post-card { padding: 14px 16px; }
+  .post-media { max-height: 72vh; border-radius: 12px; }
+  .fallback-note { padding-inline: 16px; }
+  .source-pill { max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .post-tags a, .timeline-state button, .load-more button { transition: color .15s, background .15s; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 

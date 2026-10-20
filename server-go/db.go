@@ -228,6 +228,7 @@ func orDefault(s, d string) string {
 
 type postFilter struct {
 	Tag, Category, ProfileID  string
+	Rating                    string
 	Limit, Offset             int
 	CursorCreatedAt, CursorID string // 游标：返回排在 (createdAt,id) 之后的作品
 	ParentID                  string
@@ -276,6 +277,14 @@ func getPosts(q querier, f postFilter) ([]M, error) {
 		}
 		query += kw + "(p.created_at < ? OR (p.created_at = ? AND p.id < ?))"
 		args = append(args, f.CursorCreatedAt, f.CursorCreatedAt, f.CursorID)
+	}
+	if f.Rating != "" && f.Rating != "all" {
+		kw := " WHERE "
+		if strings.Contains(query, " WHERE ") {
+			kw = " AND "
+		}
+		query += kw + "p.rating = ?"
+		args = append(args, f.Rating)
 	}
 	query += " ORDER BY p.created_at DESC, p.id DESC"
 	if f.Limit > 0 {

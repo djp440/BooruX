@@ -10,12 +10,18 @@ export const messages = {
     system: "跟随系统", light: "浅色", dark: "深色", general: "General", sensitive: "Sensitive",
     questionable: "Questionable", explicit: "Explicit", all: "全部", online: "在线优先", local: "仅本地缓存",
     loading: "正在加载设置…", saving: "正在保存…", saveFailed: "保存失败，请重试。", profileMissing: "找不到这个 Profile。",
+    loadingTimeline: "正在加载时间线…", loadingMore: "正在加载更多…", loadMore: "加载更多", retry: "重试",
+    timelineError: "时间线加载失败。请检查连接后重试。", cacheFallback: "Online Source 暂不可用，当前显示 Local Cache。",
+    ratingFallback: "在线结果不符合当前 Rating，已改用 Local Cache。", localCache: "Local Cache", onlineSource: "Online Source",
+    emptyTimeline: "时间线还是空的", emptyTimelineBody: "当前 Profile 还没有可显示的作品。",
+    endOfTimeline: "已经到底了。", video: "视频", gif: "GIF", bookmarked: "已收藏",
+    searchComingSoon: "标签「{tags}」的搜索将在下一阶段接入。",
     notFound: "页面不存在", notFoundBody: "这个地址没有对应的页面。", navLabel: "主导航", explore: "探索",
     placeholderSearch: "搜索功能将在下一阶段接入。", placeholderBookmarks: "收藏功能将在后续阶段接入。",
     assistantUnconfigured: "AI 助手尚未配置", assistantUnconfiguredBody: "当前还没有可用的 AI Provider。请先在设置中完成配置，再回来开始对话。",
     assistantReadyBody: "可以询问作品、标签或收藏信息。", model: "模型", chooseModel: "选择模型", chooseModelBody: "请选择一个可用模型开始对话。",
     clearChat: "清空对话", clearConfirm: "确定清空当前对话和附件吗？", chatFailed: "对话请求失败，请重试。",
-    generating: "正在生成…", stop: "停止", retry: "重试", attach: "添加图片", messagePlaceholder: "输入消息", send: "发送", attachmentsMax: "最多 4 张",   },
+    generating: "正在生成…", stop: "停止", attach: "添加图片", messagePlaceholder: "输入消息", send: "发送", attachmentsMax: "最多 4 张",   },
   en: {
     timeline: "Timeline", search: "Search", bookmarks: "Bookmarks", assistant: "AI assistant", settings: "Settings",
     skip: "Skip to main content", railNote: "Browse posts without pretending social features exist.", eyebrow: "Web MVP",
@@ -25,13 +31,21 @@ export const messages = {
     system: "System", light: "Light", dark: "Dark", general: "General", sensitive: "Sensitive",
     questionable: "Questionable", explicit: "Explicit", all: "All", online: "Online first", local: "Local cache only",
     loading: "Loading settings…", saving: "Saving…", saveFailed: "Could not save changes. Try again.", profileMissing: "This Profile could not be found.",
+    loadingTimeline: "Loading Timeline…", loadingMore: "Loading more…", loadMore: "Load more", retry: "Retry",
+    timelineError: "The Timeline could not load. Check your connection and retry.", cacheFallback: "The Online Source is unavailable; showing Local Cache.",
+    ratingFallback: "Online results did not match this Profile's Rating; showing Local Cache.", localCache: "Local Cache", onlineSource: "Online Source",
+    emptyTimeline: "The Timeline is empty", emptyTimelineBody: "This Profile has no posts to show.",
+    endOfTimeline: "You've reached the end.", video: "Video", gif: "GIF", bookmarked: "Bookmarked",
+    searchComingSoon: "Search for tag \"{tags}\" will be connected in the next slice.",
     notFound: "Page not found", notFoundBody: "There is no page at this address.", navLabel: "Primary navigation", explore: "Explore",
     placeholderSearch: "Search will be connected in the next slice.", placeholderBookmarks: "Bookmarks will be connected in a later slice.",
     assistantUnconfigured: "AI assistant is not configured", assistantUnconfiguredBody: "No AI Provider is available yet. Configure one in Settings, then come back to start chatting.",
     assistantReadyBody: "Ask about posts, tags or bookmarks.", model: "Model", chooseModel: "Choose a model", chooseModelBody: "Choose an available model to start chatting.",
     clearChat: "Clear chat", clearConfirm: "Clear this conversation and its attachments?", chatFailed: "The chat request failed. Try again.",
-    generating: "Generating…", stop: "Stop", retry: "Retry", attach: "Add images", messagePlaceholder: "Message", send: "Send", attachmentsMax: "4 max",   },
+    generating: "Generating…", stop: "Stop", attach: "Add images", messagePlaceholder: "Message", send: "Send", attachmentsMax: "4 max",   },
 } as const;
 
 export type Messages = (typeof messages)[Language];
+
+
 

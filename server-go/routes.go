@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,8 +12,9 @@ import (
 )
 
 type server struct {
-	db    *sql.DB
-	media *MediaCache
+	db        *sql.DB
+	media     *MediaCache
+	marketURL string
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
@@ -533,8 +535,12 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 			return
 		}
 		q := r.URL.Query()
+		settings := getProfileSettings(s.db, pid)
+		rating := orDefault(str(settings["rating"]), "general")
+		localOnly := str(settings["dataSource"]) == "sqlite"
 		page := atoi(q.Get("page"), 1)
 		limit := atoi(q.Get("limit"), 20)
+		limit = min(max(limit, 1), 100)
 		// cursor："d:<id>" 为 Danbooru 在线游标；其他值为本地库游标（base64url）
 		cursor, beforeID, localCursor := q.Get("cursor"), "", ""
 		if id, isOnline := strings.CutPrefix(cursor, "d:"); isOnline {
@@ -552,34 +558,57 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 		}
 		var posts []M
 		var err error
-		source := ""
-		if localCursor == "" {
-			posts, err = fetchDanbooruPosts(r.Context(), danbooruOptions{Tags: q.Get("tags"), Rating: orDefault(q.Get("rating"), "general"), Page: page, Limit: limit,
-				BeforeID: beforeID, OnSource: func(s string) { source = s }})
-			if err == nil && len(posts) > 0 {
-				_, _ = syncDanbooruToDB(s.db, posts)
+		source, fallback := "sqlite", ""
+		if localCursor == "" && !localOnly {
+			source = "danbooru"
+			base := s.marketURL
+			if base != "" {
+				base += "/danbooru"
+			}
+			if base != "" && !strings.HasSuffix(base, "/posts.json") {
+				base += "/posts.json"
+			}
+			posts, err = fetchDanbooruPosts(r.Context(), danbooruOptions{BaseURL: base, Tags: q.Get("tags"), Rating: rating, Page: page, Limit: limit, BeforeID: beforeID, ThrowOnFailure: true, OnSource: func(s string) { source = s }})
+			if source != "danbooru" && err == nil {
+				err = errors.New("Online Source 不可用，使用 Local Cache")
+			}
+			if err == nil {
+				var filtered bool
+				if posts, filtered = filterPostsByRating(posts, rating); filtered {
+					fallback = "rating-filtered"
+					err = errors.New("online source returned posts outside profile rating")
+				}
+				if err == nil && len(posts) > 0 {
+					_, _ = syncDanbooruToDB(s.db, posts)
+				}
 			}
 		}
 		nextCursor := ""
-		if localCursor == "" && err == nil && source == "danbooru" && len(posts) > 0 && len(posts) >= min(limit, 100) {
+		if localCursor == "" && err == nil && !localOnly && source == "danbooru" && len(posts) > 0 && len(posts) >= limit {
 			nextCursor = "d:" + strings.TrimPrefix(str(posts[len(posts)-1]["id"]), "danbooru-")
 		}
-		if localCursor != "" || err != nil {
+		if localCursor != "" || localOnly || err != nil {
 			if err != nil {
 				appendServerLog("WARN", "DANBOORU_ROUTE", "Live fetch failed, falling back to local SQLite cache", err.Error())
+				if fallback == "" {
+					fallback = "online-unavailable"
+				}
 			}
-			lim := atoi(q.Get("limit"), 25)
-			f := postFilter{Tag: q.Get("tags"), Limit: lim, Offset: max(0, (page-1)*lim), ProfileID: pid}
+			source = "sqlite"
+			f := postFilter{Tag: q.Get("tags"), Rating: rating, Limit: limit, Offset: max(0, (page-1)*limit), ProfileID: pid}
 			if beforeID != "" {
 				localCursor, _ = s.cursorFromDanbooruID(beforeID)
 				if localCursor == "" { // 本地没有该作品，无法定位，视为到底
-					writeJSON(w, 200, M{"success": true, "source": "danbooru", "count": 0, "posts": []M{}, "nextCursor": ""})
+					writeJSON(w, 200, M{"success": true, "source": source, "fallback": fallback, "count": 0, "posts": []M{}, "nextCursor": ""})
 					return
 				}
 			}
 			if localCursor != "" {
 				f.CursorCreatedAt, f.CursorID, _ = decodeCursor(localCursor)
-				f.Offset, f.Limit = 0, lim+1
+				f.Offset, f.Limit = 0, limit+1
+			}
+			if localCursor == "" {
+				f.Limit = limit + 1
 			}
 			posts, err = getPosts(s.db, f)
 			if err != nil {
@@ -588,13 +617,13 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 				return
 			}
 			nextCursor = ""
-			if localCursor != "" && len(posts) > lim {
-				posts = posts[:lim]
-				nextCursor = encodeCursor(str(posts[lim-1]["createdAt"]), str(posts[lim-1]["id"]))
+			if len(posts) > limit {
+				posts = posts[:limit]
+				nextCursor = encodeCursor(str(posts[limit-1]["createdAt"]), str(posts[limit-1]["id"]))
 			}
 		}
 		posts = s.applyBookmarkState(posts, pid)
-		writeJSON(w, 200, M{"success": true, "source": "danbooru", "count": len(posts), "posts": posts, "nextCursor": nextCursor})
+		writeJSON(w, 200, M{"success": true, "source": source, "fallback": fallback, "count": len(posts), "posts": posts, "nextCursor": nextCursor})
 	})
 	mux.HandleFunc("GET /api/danbooru/trending", func(w http.ResponseWriter, r *http.Request) {
 		pid, ok := s.optionalProfile(w, r, false)
@@ -602,7 +631,8 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 			return
 		}
 		q := r.URL.Query()
-		posts, err := fetchDanbooruPosts(r.Context(), danbooruOptions{Tags: "order:rank", Rating: orDefault(q.Get("rating"), "general"), Page: atoi(q.Get("page"), 1), Limit: atoi(q.Get("limit"), 20)})
+		settings := getProfileSettings(s.db, pid)
+		posts, err := fetchDanbooruPosts(r.Context(), danbooruOptions{Tags: "order:rank", Rating: orDefault(str(settings["rating"]), "general"), Page: atoi(q.Get("page"), 1), Limit: atoi(q.Get("limit"), 20)})
 		if err == nil && len(posts) > 0 {
 			_, _ = syncDanbooruToDB(s.db, posts)
 		}
@@ -634,6 +664,23 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 		appendServerLog("ERROR", "DANBOORU_SYNC", "Manual sync failed", err.Error())
 		errJSON(w, 500, "Sync failed")
 	})
+}
+
+func filterPostsByRating(posts []M, allowed string) ([]M, bool) {
+	out := make([]M, 0, len(posts))
+	for _, p := range posts {
+		if postRatingAllowed(str(p["rating"]), orDefault(allowed, "general")) {
+			out = append(out, p)
+		}
+	}
+	return out, len(out) != len(posts)
+}
+
+func postRatingAllowed(postRating, allowed string) bool {
+	if allowed == "all" {
+		return true
+	}
+	return postRating == allowed
 }
 
 // cursorFromDanbooruID 把在线游标（Danbooru id）还原为本地库游标；本地没有该作品时返回 false。
