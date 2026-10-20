@@ -11,13 +11,16 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "@playwright/test": "^1.58.0"
   },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "bun test"
+    "test": "bun test src",
+    "e2e": "playwright test",
+    "test:e2e": "playwright test"
   },
   "type": "module"
 }

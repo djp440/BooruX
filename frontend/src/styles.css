@@ -170,3 +170,11 @@ h2 { margin: 0 0 8px; font-size: 1rem; }
   .composer { bottom: 64px; padding: 10px 12px; }
   .send-button { padding: 0 13px; }
 }
+
+.bookmark-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.bookmark-button { min-height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: #d6d9db; font: inherit; font-size: .84rem; font-weight: 700; cursor: pointer; }
+.bookmark-button:hover { border-color: var(--accent); color: white; }
+.bookmark-button.active { border-color: #66501f; background: #241e10; color: #ffd166; }
+.bookmark-button:disabled { opacity: .6; cursor: wait; }
+.bookmark-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bookmark-error { margin: 0; color: #f4212e; font-size: .8rem; }
