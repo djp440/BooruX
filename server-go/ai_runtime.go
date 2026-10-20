@@ -60,6 +60,7 @@ func (rt *AiRuntime) getRun(profileID, id string) (M, error) {
 }
 
 func (rt *AiRuntime) chat(profileID string) M {
+	configured := len(listProviders(rt.db)) > 0
 	sel, _ := queryMap(rt.db, "SELECT providerId,modelId,reasoningEffort FROM ai_chats WHERE profileId=?", profileID)
 	if sel == nil {
 		sel = M{}
@@ -101,7 +102,7 @@ func (rt *AiRuntime) chat(profileID string) M {
 	}
 	var cursor int64
 	_ = rt.db.QueryRow("SELECT COALESCE(MAX(e.id),0) FROM ai_events e JOIN ai_runs r ON r.id=e.runId WHERE r.profileId=?", profileID).Scan(&cursor)
-	return M{"selection": sel, "messages": messages, "runs": runs, "calls": calls, "cursor": cursor}
+	return M{"configured": configured, "selection": sel, "messages": messages, "runs": runs, "calls": calls, "cursor": cursor}
 }
 
 func (rt *AiRuntime) selectModel(profileID, providerID, modelID string, effort *string) error {

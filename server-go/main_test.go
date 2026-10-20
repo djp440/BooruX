@@ -193,3 +193,14 @@ func TestDanbooruRouteCursorFallsBackToLocal(t *testing.T) {
 		t.Fatal(createdAt, pid)
 	}
 }
+
+func TestChatStateExplicitlyReportsNoProvider(t *testing.T) {
+	h := testServer(t)
+	w := do(h, http.MethodGet, "/api/profiles/default/chat", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", w.Code, w.Body.String())
+	}
+	if got := w.Body.String(); !strings.Contains(got, "\"configured\":false") || !strings.Contains(got, "\"messages\":[]") {
+		t.Fatalf("body = %s", got)
+	}
+}
