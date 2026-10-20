@@ -1,0 +1,30 @@
+# 运行数据（SQLite 内含 AI provider 的 apiKey，切勿提交）
+server-go/data/
+*.db
+*.db-shm
+*.db-wal
+
+# 日志
+logs/
+
+# 构建产物
+*.exe
+*.test
+*.out
+
+# 环境变量与密钥
+.env
+.env.*
+*.pem
+*.key
+
+# 编辑器 / 系统 / 工具
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+.agent-media/
+# 前端依赖与工具缓存
+frontend/node_modules/
+frontend/.vite/
+.codebase-memory/
