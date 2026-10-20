@@ -139,6 +139,37 @@ func TestChildrenEndpoint(t *testing.T) {
 	}
 }
 
+func TestPostDetailAndChildrenRespectProfileRating(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	mk := func(id, rating string, parent any) M {
+		return M{"id": id, "title": id, "artist": "a", "imageUrl": "https://x/" + id, "previewUrl": "https://x/" + id,
+			"rating": rating, "createdAt": "2026-01-01T00:00:00Z", "tags": []M{}, "parentId": parent}
+	}
+	if _, err := syncDanbooruToDB(db, []M{mk("test-parent", "general", nil), mk("test-safe-child", "general", "test-parent"), mk("test-explicit-child", "explicit", "test-parent")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setProfileSettings(db, defaultProfileID, M{"rating": "general"}); err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+
+	if w := do(h, "GET", "/api/posts/test-explicit-child?profileId=default", ""); w.Code != 404 {
+		t.Fatalf("explicit detail status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if w := do(h, "GET", "/api/posts/missing?profileId=default", ""); w.Code != 404 {
+		t.Fatalf("missing detail status = %d, body = %s", w.Code, w.Body.String())
+	}
+	w := do(h, "GET", "/api/posts/test-parent/children?profileId=default", "")
+	var res struct{ Posts []M }
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &res) != nil || len(res.Posts) != 1 || str(res.Posts[0]["id"]) != "test-safe-child" {
+		t.Fatalf("children status = %d, body = %s", w.Code, w.Body.String())
+	}
+}
+
 func TestArtistNotFaked(t *testing.T) {
 	y := transformYanderePost(M{"id": float64(9), "author": "uploader", "sample_url": "https://x/y.jpg"})
 	s := transformSafebooruPost(M{"id": float64(7), "owner": "danbooru", "file_url": "https://x/s.jpg"})

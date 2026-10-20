@@ -18,6 +18,8 @@ export type Post = {
   createdAt: string;
   description?: string;
   mediaType: "image" | "gif" | "video";
+  parentId?: string;
+  hasChildren?: boolean;
   tags?: { id: string; name: string; category: string }[];
 };
 export type TimelinePage = {
@@ -37,13 +39,22 @@ type ProfilesResponse = { profiles?: Profile[] };
 type SettingsResponse = { settings?: Settings };
 type ErrorResponse = { error?: string };
 
+export class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   const body = (await response.json().catch(() => ({}))) as T & ErrorResponse;
-  if (!response.ok) throw new Error(body.error || "Request failed");
+  if (!response.ok) throw new HttpError(response.status, body.error || "Request failed");
   return body;
 }
 
@@ -72,3 +83,31 @@ export const getTimeline = (profileId: string, cursor?: string) => {
   }));
 };
 
+export function postFromResponse(body: Partial<Post>): Post {
+  return {
+    id: body.id ?? "",
+    title: body.title ?? "",
+    artist: body.artist ?? "",
+    imageUrl: body.imageUrl ?? "",
+    previewUrl: body.previewUrl ?? "",
+    aspectRatio: body.aspectRatio ?? 0,
+    width: body.width ?? 0,
+    height: body.height ?? 0,
+    isBookmarked: body.isBookmarked ?? false,
+    rating: body.rating ?? "general",
+    createdAt: body.createdAt ?? "",
+    description: body.description ?? "",
+    mediaType: body.mediaType ?? "image",
+    parentId: body.parentId || undefined,
+    hasChildren: body.hasChildren ?? false,
+    tags: body.tags ?? [],
+  };
+}
+
+export const getPost = (id: string, profileId: string) =>
+  request<{ post?: Partial<Post> }>("/api/posts/" + encodeURIComponent(id) + "?profileId=" + encodeURIComponent(profileId))
+    .then((body) => postFromResponse(body.post ?? {}));
+
+export const getChildren = (id: string, profileId: string) =>
+  request<{ posts?: Partial<Post>[] }>("/api/posts/" + encodeURIComponent(id) + "/children?profileId=" + encodeURIComponent(profileId))
+    .then((body) => (body.posts ?? []).map(postFromResponse));

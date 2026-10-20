@@ -1,7 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useParams } from "react-router";
-import { getProfiles, getSettings, getTimeline, saveSettings, type Language, type Post, type Profile, type Settings } from "./api";
+import { getChildren, getPost, getProfiles, getSettings, getTimeline, HttpError, saveSettings, type Language, type Post, type Profile, type Settings } from "./api";
+import { mediaView } from "./media";
 import { Assistant } from "./Assistant";
 import { Shell } from "./Shell";
 import { messages, type Messages } from "./i18n";
@@ -29,9 +30,12 @@ function relativeTime(value: string, language: Language) {
   return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(Math.round(seconds / size), unit);
 }
 
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function PostCard({ post, t, language }: { post: Post; t: Messages; language: Language }) {
-  const media = post.mediaType === "video" ? post.previewUrl || post.imageUrl : post.imageUrl;
-  const animated = post.mediaType === "gif" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const preview = mediaView(post, prefersReducedMotion());
   return <article className="post-card" data-post-id={post.id}>
     <header className="post-author">
       <span className="artist-mark" aria-hidden="true">{post.artist.slice(0, 1).toUpperCase()}</span>
@@ -39,17 +43,55 @@ function PostCard({ post, t, language }: { post: Post; t: Messages; language: La
       <time dateTime={post.createdAt}>{relativeTime(post.createdAt, language)}</time>
       {post.isBookmarked && <span className="bookmark-state" aria-label={t.bookmarked}>{t.bookmarked}</span>}
     </header>
-    <h2 className="post-title">{post.title}</h2>
-    {post.description && <p className="post-description">{post.description}</p>}
-    <div className="post-media" style={{ aspectRatio: post.aspectRatio || post.width / post.height || .5625 }}>
-      <img src={animated ? media : post.previewUrl || media} alt={post.title} loading="lazy" decoding="async" />
-      {post.mediaType === "video" && <span className="media-badge">{t.video}</span>}
-      {post.mediaType === "gif" && <span className="media-badge">{t.gif}</span>}
-    </div>
+    <NavLink className="post-detail-link" to={"/post/" + encodeURIComponent(post.id)}>
+      <h2 className="post-title">{post.title}</h2>
+      {post.description && <p className="post-description">{post.description}</p>}
+      <div className="post-media" style={{ aspectRatio: preview.aspectRatio }}>
+        <img src={preview.src} alt={post.title} loading="lazy" decoding="async" />
+        {post.mediaType === "video" && <span className="media-badge">{t.video}</span>}
+        {post.mediaType === "gif" && <span className="media-badge">{t.gif}</span>}
+      </div>
+    </NavLink>
     <div className="post-tags">{(post.tags ?? []).slice(0, 8).map((tag) => <NavLink key={tag.id} to={"/search?tags=" + encodeURIComponent(tag.name)}>#{tag.name}</NavLink>)}</div>
   </article>;
 }
 
+function PostDetailPage({ t, profileId, ready }: { t: Messages; profileId: string; ready: boolean }) {
+  const { id = "" } = useParams();
+  const [playing, setPlaying] = useState(false);
+  const language: Language = t === messages["zh-CN"] ? "zh-CN" : "en";
+  const postQuery = useQuery({ queryKey: ["post", profileId, id], queryFn: () => getPost(id, profileId), enabled: ready && Boolean(id) });
+  const post = postQuery.data;
+  const childrenQuery = useQuery({
+    queryKey: ["post-children", profileId, id],
+    queryFn: () => getChildren(id, profileId),
+    enabled: ready && Boolean(post?.hasChildren),
+  });
+  const parentQuery = useQuery({
+    queryKey: ["post-parent", profileId, post?.parentId],
+    queryFn: () => getPost(post!.parentId!, profileId),
+    enabled: ready && Boolean(post?.parentId),
+  });
+  const back = <NavLink className="back-link" to="/">{t.backToTimeline}</NavLink>;
+  if (!ready || postQuery.isLoading) return <Shell t={t}><div className="page-heading"><p className="eyebrow">{t.timeline}</p><h1>{t.loadingPost}</h1></div>{back}</Shell>;
+  if (postQuery.error instanceof HttpError && postQuery.error.status === 404) return <Shell t={t}><div className="page-heading"><p className="eyebrow">BooruX</p><h1>{t.notFound}</h1></div><section className="empty-panel"><p>{t.postMissing}</p>{back}</section></Shell>;
+  if (postQuery.isError) return <Shell t={t}><div className="page-heading"><p className="eyebrow">BooruX</p><h1>{t.postError}</h1></div><div className="detail-actions">{back}<button type="button" onClick={() => postQuery.refetch()}>{t.retry}</button></div></Shell>;
+  if (!post) return <Shell t={t}><div className="page-heading"><p className="eyebrow">BooruX</p><h1>{t.notFound}</h1></div><section className="empty-panel"><p>{t.postMissing}</p>{back}</section></Shell>;
+  const view = mediaView(post, prefersReducedMotion());
+  return <Shell t={t}>
+    <div className="page-heading detail-heading"><div><p className="eyebrow">{t.eyebrow}</p><h1>{post.title}</h1></div>{back}</div>
+    <article className="post-card detail-card" data-post-id={post.id}>
+      <header className="post-author"><span className="artist-mark" aria-hidden="true">{post.artist.slice(0, 1).toUpperCase()}</span><span className="artist-name">{post.artist}</span><time dateTime={post.createdAt}>{relativeTime(post.createdAt, language)}</time>{post.isBookmarked && <span className="bookmark-state" aria-label={t.bookmarked}>{t.bookmarked}</span>}</header>
+      {post.mediaType === "video" ? <div className="post-media detail-media" style={{ aspectRatio: view.aspectRatio }}>
+        {playing ? <video src={view.videoSrc} poster={view.src} controls autoPlay playsInline /> : <button className="video-poster" type="button" onClick={() => setPlaying(true)}><img src={view.src} alt={post.title} /><span className="play-button">{t.playVideo}</span></button>}
+      </div> : <div className="post-media detail-media" style={{ aspectRatio: view.aspectRatio }}><img src={view.src} alt={post.title} loading="eager" decoding="async" />{post.mediaType === "gif" && <span className="media-badge">{t.gif}</span>}</div>}
+      <p className="detail-description">{post.description || ""}</p>
+      <div className="post-tags detail-tags">{(post.tags ?? []).map((tag) => <NavLink key={tag.id} to={"/search?tags=" + encodeURIComponent(tag.name)}>#{tag.name}</NavLink>)}</div>
+      {parentQuery.data && <section className="relation-section"><h2>{t.parentPost}</h2><NavLink className="relation-card" to={"/post/" + encodeURIComponent(parentQuery.data.id)}><img src={parentQuery.data.previewUrl || parentQuery.data.imageUrl} alt="" loading="lazy" /><span>{parentQuery.data.title}</span></NavLink></section>}
+      {post.hasChildren && childrenQuery.data?.length ? <section className="relation-section"><h2>{t.childPosts}</h2><div className="relation-grid">{childrenQuery.data.map((child) => <NavLink key={child.id} className="relation-card" to={"/post/" + encodeURIComponent(child.id)}><img src={child.previewUrl || child.imageUrl} alt="" loading="lazy" /><span>{child.title}</span></NavLink>)}</div></section> : null}
+    </article>
+  </Shell>;
+}
 function TimelinePage({ t, profileId, ready }: { t: Messages; profileId: string; ready: boolean }) {
   const language: Language = t === messages["zh-CN"] ? "zh-CN" : "en";
   const query = useInfiniteQuery({
@@ -127,6 +169,7 @@ export function App() {
     <Route path="/" element={<TimelinePage t={t} profileId={profileId} ready={profiles.length > 0 && settingsQuery.isSuccess} />} />
     <Route path="/settings" element={<SettingsPage t={t} profileId={profileId} profiles={profiles} />} />
     <Route path="/profile/:id" element={<ProfileRoute t={t} profiles={profiles} />} />
+    <Route path="/post/:id" element={<PostDetailPage t={t} profileId={profileId} ready={profiles.length > 0 && settingsQuery.isSuccess} />} />
     <Route path="/search" element={<SearchPage t={t} />} />
     <Route path="/bookmarks" element={<Placeholder t={t} title={t.bookmarks} description={t.placeholderBookmarks} />} />
     <Route path="/assistant" element={<Assistant t={t} profileId={profileId} />} />

@@ -302,10 +302,20 @@ func getPosts(q querier, f postFilter) ([]M, error) {
 	return formatPosts(q, rows, f.ProfileID), nil
 }
 
+func allowedRating(q querier, profileID string) string {
+	if profileID == "" {
+		return ""
+	}
+	return orDefault(str(getProfileSettings(q, profileID)["rating"]), "general")
+}
+
 func getPostByID(q querier, id, profileID string) (M, error) {
 	row, err := queryMap(q, "SELECT * FROM posts WHERE id = ?", id)
 	if err != nil || row == nil {
 		return nil, err
+	}
+	if rating := allowedRating(q, profileID); rating != "" && !postRatingAllowed(str(row["rating"]), rating) {
+		return nil, nil
 	}
 	return formatPost(q, row, profileID), nil
 }
