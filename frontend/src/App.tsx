@@ -31,40 +31,41 @@ function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function BookmarkButton({ post, profileId, t, queryKey }: { post: Post; profileId: string; t: Messages; queryKey: readonly unknown[] }) {
+function BookmarkButton({ post, profileId, t }: { post: Post; profileId: string; t: Messages }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
-  const snapshot = queryClient.getQueryData(queryKey);
-  const cached = queryKey[0] === "post" ? snapshot as Post | undefined : findBookmark(snapshot as InfiniteData<{ posts: Post[] }> | undefined, post.id)?.post;
-  const bookmarked = cached?.isBookmarked ?? post.isBookmarked;
-  const bookmarksKey = ["bookmarks", profileId];
+  const bookmarkKey = ["bookmarks", profileId];
+  const timelineKey = ["timeline", profileId];
+  const detailKey = ["post", profileId, post.id];
+  const bookmarked = queryClient.getQueryData<Post>(detailKey)?.isBookmarked
+    ?? findBookmark(queryClient.getQueryData<InfiniteData<{ posts: Post[] }>>(timelineKey), post.id)?.post.isBookmarked
+    ?? post.isBookmarked;
   const mutation = useMutation({
     mutationFn: (bookmarked: boolean) => setBookmark(post.id, profileId, bookmarked),
-    onMutate: async (bookmarked) => {
+    onMutate: async (next) => {
       setError("");
-      await queryClient.cancelQueries({ queryKey });
-      if (queryKey[0] === "bookmarks") await queryClient.cancelQueries({ queryKey: bookmarksKey });
-      const remove = queryKey[0] === "bookmarks" && !bookmarked;
-      const bookmarkData = queryClient.getQueryData<InfiniteData<{ posts: Post[] }>>(queryKey);
-      const location = queryKey[0] === "bookmarks" ? findBookmark(bookmarkData, post.id) : undefined;
-      queryClient.setQueryData(queryKey, (data) => queryKey[0] === "post" ? { ...post, isBookmarked: bookmarked } : updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, bookmarked, { remove }));
-      if (queryKey[0] !== "bookmarks") {
-        queryClient.setQueryData(bookmarksKey, (data) => updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, bookmarked, { remove }));
-      }
-      return { location };
+      await queryClient.cancelQueries();
+      const previous = {
+        detail: queryClient.getQueryData(detailKey),
+        bookmarks: queryClient.getQueryData(bookmarkKey),
+        timelines: queryClient.getQueriesData({ queryKey: timelineKey }),
+      };
+      const location = findBookmark(previous.bookmarks as InfiniteData<{ posts: Post[] }> | undefined, post.id);
+      queryClient.setQueryData(detailKey, (data: Post | undefined) => data ? { ...data, isBookmarked: next } : data);
+      queryClient.setQueryData(bookmarkKey, (data: InfiniteData<{ posts: Post[] }> | undefined) => updateBookmarkCache(data, post.id, next, { remove: !next }));
+      for (const [key, data] of previous.timelines) queryClient.setQueryData(key, updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, next));
+      return { previous, location };
     },
-    onError: (cause, bookmarked, context) => {
-      const restoreAt = bookmarked ? undefined : context?.location;
-      queryClient.setQueryData(queryKey, (data) => queryKey[0] === "post" ? { ...post, isBookmarked: !bookmarked } : updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, !bookmarked, { restoreAt }));
-      if (queryKey[0] !== "bookmarks") {
-        queryClient.setQueryData(bookmarksKey, (data) => updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, !bookmarked, { restoreAt }));
-      }
+    onError: (cause, next, context) => {
+      queryClient.setQueryData(detailKey, context?.previous.detail);
+      queryClient.setQueryData(bookmarkKey, (data) => updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, !next, { restoreAt: next ? undefined : context?.location }));
+      for (const [key, data] of context?.previous.timelines ?? []) queryClient.setQueryData(key, data);
       setError(bookmarkErrorMessage(cause, t.bookmarkFailed));
     },
-    onSuccess: (_result, bookmarked) => {
-      queryClient.setQueryData(queryKey, (data) => queryKey[0] === "post" ? { ...post, isBookmarked: bookmarked } : updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, bookmarked, { remove: queryKey[0] === "bookmarks" && !bookmarked }));
-      void queryClient.invalidateQueries({ queryKey: ["bookmarks", profileId] });
-      void queryClient.invalidateQueries({ queryKey: ["post", profileId, post.id] });
+    onSuccess: (_result, next) => {
+      queryClient.setQueryData(detailKey, (data: Post | undefined) => data ? { ...data, isBookmarked: next } : data);
+      queryClient.setQueryData(bookmarkKey, (data: InfiniteData<{ posts: Post[] }> | undefined) => updateBookmarkCache(data, post.id, next, { remove: !next }));
+      for (const [key, data] of queryClient.getQueriesData({ queryKey: timelineKey })) queryClient.setQueryData(key, updateBookmarkCache(data as InfiniteData<{ posts: Post[] }> | undefined, post.id, next));
     },
   });
   return <div className="bookmark-action">
@@ -72,8 +73,7 @@ function BookmarkButton({ post, profileId, t, queryKey }: { post: Post; profileI
     {error && <p className="bookmark-error" role="alert">{error}</p>}
   </div>;
 }
-
-function PostCard({ post, profileId, t, language, queryKey }: { post: Post; profileId: string; t: Messages; language: Language; queryKey: readonly unknown[] }) {
+function PostCard({ post, profileId, t, language }: { post: Post; profileId: string; t: Messages; language: Language }) {
   const preview = mediaView(post, prefersReducedMotion());
   return <article className="post-card" data-post-id={post.id}>
     <header className="post-author">
@@ -92,7 +92,7 @@ function PostCard({ post, profileId, t, language, queryKey }: { post: Post; prof
       </div>
     </NavLink>
     <div className="post-tags">{(post.tags ?? []).slice(0, 8).map((tag) => <NavLink key={tag.id} to={"/search?tags=" + encodeURIComponent(tag.name)}>#{tag.name}</NavLink>)}</div>
-    <BookmarkButton post={post} profileId={profileId} t={t} queryKey={queryKey} />
+    <BookmarkButton post={post} profileId={profileId} t={t} />
   </article>;
 }
 
@@ -126,7 +126,7 @@ function PostDetailPage({ t, profileId, ready }: { t: Messages; profileId: strin
         {playing ? <video src={view.videoSrc} poster={view.src} controls autoPlay playsInline /> : <button className="video-poster" type="button" onClick={() => setPlaying(true)}><img src={view.src} alt={post.title} /><span className="play-button">{t.playVideo}</span></button>}
       </div> : <div className="post-media detail-media" style={{ aspectRatio: view.aspectRatio }}><img src={view.src} alt={post.title} loading="eager" decoding="async" />{post.mediaType === "gif" && <span className="media-badge">{t.gif}</span>}</div>}
       <p className="detail-description">{post.description || ""}</p>
-      <BookmarkButton post={post} profileId={profileId} t={t} queryKey={["post", profileId, id]} />
+      <BookmarkButton post={post} profileId={profileId} t={t} />
       <div className="post-tags detail-tags">{(post.tags ?? []).map((tag) => <NavLink key={tag.id} to={"/search?tags=" + encodeURIComponent(tag.name)}>#{tag.name}</NavLink>)}</div>
       {parentQuery.data && <section className="relation-section"><h2>{t.parentPost}</h2><NavLink className="relation-card" to={"/post/" + encodeURIComponent(parentQuery.data.id)}><img src={parentQuery.data.previewUrl || parentQuery.data.imageUrl} alt="" loading="lazy" /><span>{parentQuery.data.title}</span></NavLink></section>}
       {post.hasChildren && childrenQuery.data?.length ? <section className="relation-section"><h2>{t.childPosts}</h2><div className="relation-grid">{childrenQuery.data.map((child) => <NavLink key={child.id} className="relation-card" to={"/post/" + encodeURIComponent(child.id)}><img src={child.previewUrl || child.imageUrl} alt="" loading="lazy" /><span>{child.title}</span></NavLink>)}</div></section> : null}
@@ -164,7 +164,7 @@ function PostListPage({ t, profileId, ready, tags = "", bookmarks = false }: { t
     {query.isError && <section className="timeline-state error-state" role="alert"><p>{bookmarks ? t.bookmarksError : searching ? t.searchError : t.timelineError}</p><button type="button" onClick={() => query.refetch()}>{t.retry}</button></section>}
     {first?.fallback && <p className="fallback-note" role="status">{first.fallback === "rating-filtered" ? t.ratingFallback : t.cacheFallback}</p>}
     {!query.isLoading && !query.isError && posts.length === 0 && <section className="timeline-state"><h2>{bookmarks ? t.emptyBookmarks : searching ? t.emptySearch : t.emptyTimeline}</h2><p>{bookmarks ? t.emptyBookmarksBody : searching ? t.emptySearchBody.replace("{tags}", tags) : t.emptyTimelineBody}</p></section>}
-    {posts.length > 0 && <section className="timeline-list" aria-label={bookmarks ? t.bookmarks : searching ? t.search : t.timeline}>{posts.map((post) => <PostCard key={post.id} post={post} profileId={profileId} t={t} language={language} queryKey={bookmarks ? ["bookmarks", profileId] : searching ? ["timeline", profileId, tags] : ["timeline", profileId, ""]} />)}</section>}
+    {posts.length > 0 && <section className="timeline-list" aria-label={bookmarks ? t.bookmarks : searching ? t.search : t.timeline}>{posts.map((post) => <PostCard key={post.id} post={post} profileId={profileId} t={t} language={language} />)}</section>}
     {posts.length > 0 && !query.hasNextPage && !query.isFetching && <p className="end-state" role="status">{bookmarks ? t.endOfBookmarks : t.endOfTimeline}</p>}
     {query.hasNextPage && <div className="load-more"><button type="button" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? t.loadingMore : t.loadMore}</button></div>}
   </Shell>;
@@ -235,3 +235,4 @@ export function App() {
     <Route path="*" element={<Placeholder t={t} title={t.notFound} description={t.notFoundBody} />} />
   </Routes>;
 }
+

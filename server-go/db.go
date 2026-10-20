@@ -621,7 +621,7 @@ func getBookmarkSnapshots(q querier, profileID string) []M {
 
 func setBookmark(q querier, profileID, postID string, bookmarked bool) (M, error) {
 	prof, _ := getProfileByID(q, profileID)
-	post, _ := getPostByID(q, postID, "")
+	post, _ := getPostByID(q, postID, profileID)
 	if prof == nil || post == nil {
 		return nil, nil
 	}
@@ -845,10 +845,7 @@ func fetchAndRememberForBookmark(ctx context.Context, db *sql.DB, id string) (M,
 	return rememberForBookmark(db, posts[0])
 }
 
-func rememberPostForBookmark(ctx context.Context, db *sql.DB, profileID, id string, localOnly bool) (M, error) {
-	if localOnly {
-		return nil, nil
-	}
+func rememberPostForBookmark(ctx context.Context, db *sql.DB, profileID, id string) (M, error) {
 	post, err := fetchAndRememberForBookmark(ctx, db, id)
 	if err != nil || post == nil {
 		return nil, err

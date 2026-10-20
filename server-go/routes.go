@@ -243,7 +243,9 @@ func (s *server) postRoutes(mux *http.ServeMux) {
 			}
 			post, err = setBookmark(s.db, pid, id, want)
 			if err == nil && post == nil && want {
-				post, err = rememberPostForBookmark(r.Context(), s.db, pid, id, localOnly(r))
+				if str(getProfileSettings(s.db, pid)["dataSource"]) != "sqlite" {
+					post, err = rememberPostForBookmark(r.Context(), s.db, pid, id)
+				}
 			}
 		} else {
 			post, err = toggleBookmarkLegacy(s.db, id)

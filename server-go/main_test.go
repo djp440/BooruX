@@ -470,3 +470,21 @@ func TestBookmarkOnlinePostPersistsForBookmarksRoute(t *testing.T) {
 		t.Fatalf("bookmarks: code=%d body=%q", w.Code, w.Body.String())
 	}
 }
+
+func TestBookmarkRejectedByRatingDoesNotWrite(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := M{"id": "hidden", "title": "hidden", "artist": "a", "imageUrl": "https://x/h.jpg", "previewUrl": "https://x/h.jpg", "rating": "explicit", "createdAt": "2026-01-01T00:00:00Z", "tags": []M{}}
+	if _, err := syncDanbooruToDB(db, []M{post}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := setBookmark(db, defaultProfileID, "hidden", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p != nil || exists(db, "SELECT 1 FROM profile_bookmarks WHERE profile_id=? AND post_id=?", defaultProfileID, "hidden") {
+		t.Fatal("disallowed bookmark was written")
+	}
+}
