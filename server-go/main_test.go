@@ -471,6 +471,49 @@ func TestBookmarkOnlinePostPersistsForBookmarksRoute(t *testing.T) {
 	}
 }
 
+func TestBookmarkFallsBackToInjectedMarketForDanbooru(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	var requested string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Path + "?" + r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"id":42,"rating":"g","image_width":100,"image_height":100,"file_url":"https://x/42.jpg","created_at":"2026-01-01T00:00:00Z","tag_string":"solo"}]`))
+	}))
+	defer upstream.Close()
+	s := &server{db: db, media: newMediaCache(db, t.TempDir()), marketURL: upstream.URL}
+	h := withMiddleware(s.routes())
+	w := do(h, http.MethodPost, "/api/posts/danbooru-42/bookmark?profileId=default", `{"bookmarked":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("bookmark: code=%d body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(requested, "/danbooru/posts.json") || !strings.Contains(requested, "id%3A42") {
+		t.Fatalf("market route not used: %q", requested)
+	}
+}
+
+func TestBookmarkRejectsMismatchedOnlineID(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Exec("DELETE FROM posts")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":999,"rating":"g","image_width":100,"image_height":100,"file_url":"https://x/999.jpg","created_at":"2026-01-01T00:00:00Z","tag_string":"solo"}]`))
+	}))
+	defer upstream.Close()
+	s := &server{db: db, media: newMediaCache(db, t.TempDir()), marketURL: upstream.URL}
+	h := withMiddleware(s.routes())
+	w := do(h, http.MethodPost, "/api/posts/danbooru-42/bookmark?profileId=default", `{"bookmarked":true}`)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("mismatched id: code=%d body=%q", w.Code, w.Body.String())
+	}
+	if exists(db, "SELECT 1 FROM profile_bookmarks WHERE profile_id=? AND post_id=?", defaultProfileID, "danbooru-999") {
+		t.Fatal("mismatched post was written")
+	}
+}
 func TestBookmarkRejectedByRatingDoesNotWrite(t *testing.T) {
 	db, err := initDatabase(":memory:")
 	if err != nil {

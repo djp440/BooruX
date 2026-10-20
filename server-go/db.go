@@ -830,23 +830,42 @@ func rememberForBookmark(db *sql.DB, post M) (M, error) {
 	return post, nil
 }
 
-func fetchAndRememberForBookmark(ctx context.Context, db *sql.DB, id string) (M, error) {
+func fetchAndRememberForBookmark(ctx context.Context, db *sql.DB, marketURL, id string) (M, error) {
 	rawID, source := id, "danbooru"
 	if prefix, suffix, ok := strings.Cut(id, "-"); ok {
 		source, rawID = prefix, suffix
 	}
-	if source != "danbooru" {
+	if rawID == "" || !inList(source, "danbooru", "safebooru", "yandere") {
 		return nil, nil
 	}
-	posts, err := fetchDanbooruPosts(ctx, danbooruOptions{Tags: "id:" + rawID, Limit: 1, Rating: "all", ThrowOnFailure: true})
+	if source != "danbooru" {
+		post, fetched, err := fetchSourcePostByID(ctx, source, rawID)
+		if err != nil || !fetched {
+			return nil, err
+		}
+		return rememberForBookmark(db, post)
+	}
+	base := marketURL
+	if base != "" {
+		base += "/danbooru"
+	}
+	if base != "" && !strings.HasSuffix(base, "/posts.json") {
+		base += "/posts.json"
+	}
+	posts, err := fetchDanbooruPosts(ctx, danbooruOptions{BaseURL: base, Tags: "id:" + rawID, Limit: 1, Rating: "all", ThrowOnFailure: true})
 	if err != nil || len(posts) == 0 {
 		return nil, err
 	}
-	return rememberForBookmark(db, posts[0])
+	for _, post := range posts {
+		if str(post["id"]) == id {
+			return rememberForBookmark(db, post)
+		}
+	}
+	return nil, nil
 }
 
-func rememberPostForBookmark(ctx context.Context, db *sql.DB, profileID, id string) (M, error) {
-	post, err := fetchAndRememberForBookmark(ctx, db, id)
+func rememberPostForBookmark(ctx context.Context, db *sql.DB, marketURL, profileID, id string) (M, error) {
+	post, err := fetchAndRememberForBookmark(ctx, db, marketURL, id)
 	if err != nil || post == nil {
 		return nil, err
 	}

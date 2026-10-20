@@ -416,6 +416,37 @@ func withImage(posts []M) []M {
 	return out
 }
 
+func fetchSourcePostByID(ctx context.Context, source, rawID string) (M, bool, error) {
+	var target string
+	values := url.Values{}
+	switch source {
+	case "safebooru":
+		values.Set("page", "dapi")
+		values.Set("s", "post")
+		values.Set("q", "index")
+		values.Set("json", "1")
+		values.Set("tags", "id:"+rawID)
+		values.Set("limit", "1")
+		target = safebooruAPIURL + "?" + values.Encode()
+	case "yandere":
+		values.Set("tags", "id:"+rawID)
+		values.Set("limit", "1")
+		target = yandereAPIURL + "?" + values.Encode()
+	}
+	arr, ok, err := fetchJSONArray(ctx, target)
+	if err != nil || !ok || len(arr) == 0 {
+		return nil, ok, err
+	}
+	raw := arr[0]
+	if str(raw["id"]) != rawID {
+		return nil, true, nil
+	}
+	if source == "safebooru" {
+		return transformSafebooruPost(raw), true, nil
+	}
+	return transformYanderePost(raw), true, nil
+}
+
 func fetchDanbooruPosts(ctx context.Context, o danbooruOptions) ([]M, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
