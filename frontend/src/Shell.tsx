@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import type { Messages } from "./i18n";
+import { searchPath, searchQuery } from "./search";
 
 const navItems = [
   { to: "/", key: "timeline", icon: "home" }, { to: "/search", key: "search", icon: "search" },
@@ -24,10 +25,25 @@ function Navigation({ mobile = false, t }: { mobile?: boolean; t: Messages }) {
   return <nav className={mobile ? "mobile-nav" : "primary-nav"} aria-label={t.navLabel}>{navItems.map((item) => <NavLink key={item.to} to={item.to} end={item.to === "/"}><Icon name={item.icon} /><span>{t[item.key]}</span></NavLink>)}</nav>;
 }
 
+function SearchForm({ t }: { t: Messages }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const query = searchQuery(location.search);
+  return <form className="header-search" role="search" onSubmit={(event) => {
+    event.preventDefault();
+    const tags = String(new FormData(event.currentTarget).get("tags") ?? "").trim();
+    navigate(tags ? searchPath(tags) : "/search");
+  }}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
+    <input key={query} name="tags" type="search" defaultValue={query} aria-label={t.searchLabel} placeholder={t.searchPlaceholder} autoComplete="off" />
+  </form>;
+}
+
 export function Shell({ t, children }: { t: Messages; children?: ReactNode }) {
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">{t.skip}</a>
     <header className="brand"><NavLink to="/" aria-label="BooruX"><span className="brand-mark">B</span><span>BooruX</span></NavLink></header>
+    <div className="top-search"><SearchForm t={t} /></div>
     <aside className="left-rail"><Navigation t={t} /><p className="rail-note">{t.railNote}</p></aside>
     <main id="main-content" className="main-column" tabIndex={-1}>{children ?? <><div className="page-heading"><p className="eyebrow">{t.eyebrow}</p><h1>{t.timeline}</h1></div><section className="empty-panel"><h2>{t.ready}</h2><p>{t.readyBody}</p></section></>}</main>
     <aside className="right-rail" aria-label={t.explore}><section className="side-panel"><h2>{t.next}</h2><p>{t.nextBody}</p><NavLink className="text-link" to="/settings">{t.openSettings}</NavLink></section></aside>

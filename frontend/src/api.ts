@@ -61,9 +61,10 @@ export const saveSettings = (profileId: string, settings: Settings) =>
     body: JSON.stringify(settings),
   }).then((body) => body.settings ?? {});
 
-export const getTimeline = (profileId: string, cursor?: string) => {
+export const getTimeline = (profileId: string, cursor?: string, tags?: string) => {
   const params = new URLSearchParams({ profileId, limit: "12" });
   if (cursor) params.set("cursor", cursor);
+  if (tags) params.set("tags", tags);
   return request<Partial<TimelinePage>>("/api/danbooru/posts?" + params).then((body) => ({
     posts: body.posts ?? [],
     nextCursor: body.nextCursor ?? "",
@@ -71,4 +72,3 @@ export const getTimeline = (profileId: string, cursor?: string) => {
     fallback: body.fallback ?? "",
   }));
 };
-

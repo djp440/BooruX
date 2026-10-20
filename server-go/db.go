@@ -246,22 +246,21 @@ func getPosts(q querier, f postFilter) ([]M, error) {
 			if t == "" || strings.HasPrefix(t, "order:") || strings.HasPrefix(t, "rating:") || strings.HasPrefix(t, "sort:") {
 				continue
 			}
-			conds = append(conds, "(t.name = ? OR t.name LIKE ?)")
-			args = append(args, t, "%"+t+"%")
+			conds = append(conds, "EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON pt.tag_id=t.id WHERE pt.post_id=p.id AND t.name = ?)")
+			args = append(args, t)
 		}
 		if len(conds) > 0 {
-			query += " JOIN post_tags pt ON p.id = pt.post_id JOIN tags t ON pt.tag_id = t.id WHERE (" + strings.Join(conds, " OR ") + ")"
+			query += " WHERE " + strings.Join(conds, " AND ")
 		}
 	}
 	if f.Category != "" {
-		if f.Tag != "" {
-			query += " AND t.category = ?"
-		} else {
-			query += " JOIN post_tags pt ON p.id = pt.post_id JOIN tags t ON pt.tag_id = t.id WHERE t.category = ?"
+		kw := " WHERE "
+		if strings.Contains(query, " WHERE ") {
+			kw = " AND "
 		}
+		query += kw + "EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON pt.tag_id=t.id WHERE pt.post_id=p.id AND t.category = ?)"
 		args = append(args, f.Category)
 	}
-	query = strings.Replace(query, "SELECT p.* FROM posts p", "SELECT DISTINCT p.* FROM posts p", 1)
 	if f.ParentID != "" {
 		kw := " WHERE "
 		if strings.Contains(query, " WHERE ") {

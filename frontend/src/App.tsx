@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useParams } from "react-router";
 import { getProfiles, getSettings, getTimeline, saveSettings, type Language, type Post, type Profile, type Settings } from "./api";
 import { Assistant } from "./Assistant";
+import { searchQuery } from "./search";
 import { Shell } from "./Shell";
 import { messages, type Messages } from "./i18n";
 
@@ -14,11 +15,6 @@ function browserLanguage(): Language {
 
 function Placeholder({ t, title, description }: { t: Messages; title: string; description: string }) {
   return <Shell t={t}><div className="page-heading"><p className="eyebrow">BooruX</p><h1>{title}</h1></div><section className="empty-panel"><p>{description}</p></section></Shell>;
-}
-
-function SearchPage({ t }: { t: Messages }) {
-  const tags = new URLSearchParams(useLocation().search).get("tags") ?? "";
-  return <Placeholder t={t} title={t.search} description={tags ? t.searchComingSoon.replace("{tags}", tags) : t.placeholderSearch} />;
 }
 
 function relativeTime(value: string, language: Language) {
@@ -50,11 +46,12 @@ function PostCard({ post, t, language }: { post: Post; t: Messages; language: La
   </article>;
 }
 
-function TimelinePage({ t, profileId, ready }: { t: Messages; profileId: string; ready: boolean }) {
+function TimelinePage({ t, profileId, ready, tags = "" }: { t: Messages; profileId: string; ready: boolean; tags?: string }) {
   const language: Language = t === messages["zh-CN"] ? "zh-CN" : "en";
+  const searching = tags !== "";
   const query = useInfiniteQuery({
-    queryKey: ["timeline", profileId],
-    queryFn: ({ pageParam }) => getTimeline(profileId, pageParam || undefined),
+    queryKey: ["timeline", profileId, tags],
+    queryFn: ({ pageParam }) => getTimeline(profileId, pageParam || undefined, tags || undefined),
     initialPageParam: "",
     getNextPageParam: (last) => last.nextCursor || undefined,
     enabled: ready,
@@ -72,15 +69,21 @@ function TimelinePage({ t, profileId, ready }: { t: Messages; profileId: string;
     return () => observer.disconnect();
   }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
   return <Shell t={t}>
-    <div className="page-heading timeline-heading"><div><p className="eyebrow">{t.eyebrow}</p><h1>{t.timeline}</h1></div>{first && <span className={"source-pill source-" + first.source}>{first.source === "sqlite" ? t.localCache : t.onlineSource}</span>}</div>
-    {query.isLoading && <section className="timeline-state" role="status">{t.loadingTimeline}</section>}
-    {query.isError && <section className="timeline-state error-state" role="alert"><p>{t.timelineError}</p><button type="button" onClick={() => query.refetch()}>{t.retry}</button></section>}
+    <div className="page-heading timeline-heading"><div><p className="eyebrow">{t.eyebrow}</p><h1>{searching ? tags : t.timeline}</h1></div>{first && <span className={"source-pill source-" + first.source}>{first.source === "sqlite" ? t.localCache : t.onlineSource}</span>}</div>
+    {query.isLoading && <section className="timeline-state" role="status">{searching ? t.loadingSearch : t.loadingTimeline}</section>}
+    {query.isError && <section className="timeline-state error-state" role="alert"><p>{searching ? t.searchError : t.timelineError}</p><button type="button" onClick={() => query.refetch()}>{t.retry}</button></section>}
     {first?.fallback && <p className="fallback-note" role="status">{first.fallback === "rating-filtered" ? t.ratingFallback : t.cacheFallback}</p>}
-    {!query.isLoading && !query.isError && posts.length === 0 && <section className="timeline-state"><h2>{t.emptyTimeline}</h2><p>{t.emptyTimelineBody}</p></section>}
-    {posts.length > 0 && <section className="timeline-list" aria-label={t.timeline}>{posts.map((post) => <PostCard key={post.id} post={post} t={t} language={language} />)}</section>}
+    {!query.isLoading && !query.isError && posts.length === 0 && <section className="timeline-state"><h2>{searching ? t.emptySearch : t.emptyTimeline}</h2><p>{searching ? t.emptySearchBody.replace("{tags}", tags) : t.emptyTimelineBody}</p></section>}
+    {posts.length > 0 && <section className="timeline-list" aria-label={searching ? t.search : t.timeline}>{posts.map((post) => <PostCard key={post.id} post={post} t={t} language={language} />)}</section>}
     {posts.length > 0 && !query.hasNextPage && !query.isFetching && <p className="end-state" role="status">{t.endOfTimeline}</p>}
     {query.hasNextPage && <div className="load-more"><button type="button" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? t.loadingMore : t.loadMore}</button></div>}
   </Shell>;
+}
+
+function SearchPage({ t, profileId, ready }: { t: Messages; profileId: string; ready: boolean }) {
+  const tags = searchQuery(useLocation().search);
+  if (!tags) return <Placeholder t={t} title={t.search} description={t.searchPrompt} />;
+  return <TimelinePage t={t} profileId={profileId} ready={ready} tags={tags} />;
 }
 
 function SettingsPage({ t, profileId, profiles }: { t: Messages; profileId: string; profiles: Profile[] }) {
@@ -127,7 +130,7 @@ export function App() {
     <Route path="/" element={<TimelinePage t={t} profileId={profileId} ready={profiles.length > 0 && settingsQuery.isSuccess} />} />
     <Route path="/settings" element={<SettingsPage t={t} profileId={profileId} profiles={profiles} />} />
     <Route path="/profile/:id" element={<ProfileRoute t={t} profiles={profiles} />} />
-    <Route path="/search" element={<SearchPage t={t} />} />
+    <Route path="/search" element={<SearchPage t={t} profileId={profileId} ready={profiles.length > 0 && settingsQuery.isSuccess} />} />
     <Route path="/bookmarks" element={<Placeholder t={t} title={t.bookmarks} description={t.placeholderBookmarks} />} />
     <Route path="/assistant" element={<Assistant t={t} profileId={profileId} />} />
     <Route path="*" element={<Placeholder t={t} title={t.notFound} description={t.notFoundBody} />} />
