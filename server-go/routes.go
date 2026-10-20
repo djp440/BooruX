@@ -194,7 +194,8 @@ func (s *server) postRoutes(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		posts, err := getPosts(s.db, postFilter{ParentID: r.PathValue("id"), ProfileID: pid})
+		f := postFilter{ParentID: r.PathValue("id"), ProfileID: pid, Rating: allowedRating(s.db, pid)}
+		posts, err := getPosts(s.db, f)
 		if err != nil {
 			s.fail500(w, "API_POSTS", "Failed to list children", err)
 			return
