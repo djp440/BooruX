@@ -282,17 +282,32 @@ body {
   -webkit-user-drag: none;
 }
 
+@keyframes fade-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .media-message {
   padding: 16px;
   text-align: center;
   font-size: 14px;
   color: var(--muted);
+  animation: fade-enter 180ms ease;
 }
 
 .media-message a {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 12px;
   margin-left: 12px;
   color: var(--tag-text);
+  box-sizing: border-box;
 }
 
 .post-notice,
@@ -491,9 +506,21 @@ body {
 .comments { scroll-margin-top: 76px; padding: 0 8px 24px; }
 .comments h2 { font-size: 18px; }
 .comment-note, .comment-status { color: var(--muted); font-size: 14px; }
-.comment { padding: 16px 0; border-top: 1px solid var(--border); }
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
 .comment header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
 .comment time, .comment > a { font-size: 12px; color: var(--muted-strong); }
 .comment a { overflow-wrap: anywhere; }
-.comment-body { white-space: pre-wrap; line-height: 1.6; overflow-wrap: anywhere; }
+.comment-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .comment-status button { margin: 8px 8px 8px 0; }

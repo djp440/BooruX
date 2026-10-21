@@ -26,7 +26,6 @@ export default function PostDetail() {
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(!!detail);
   const commentsRegion = useRef<HTMLElement>(null);
-  const initialLoad = useRef(false);
   const request = useRef<AbortController | null>(null);
   const focusComments = () => {
     commentsRegion.current?.scrollIntoView({ block: 'start' });
@@ -45,7 +44,7 @@ export default function PostDetail() {
         if (!response.ok || !data.success || !Array.isArray(data.posts)) {
           if ([401, 403, 404].includes(response.status)) {
             removePostCache(cacheKey);
-            page.detail = undefined; page.comments = undefined; initialLoad.current = false;
+            page.detail = undefined; page.comments = undefined;
             request.current?.abort(); request.current = null;
             setDetail(null); setComments(undefined); setVerified(false); setBusy(false);
           }
@@ -55,7 +54,7 @@ export default function PostDetail() {
         const members = data.posts.map(post => post.id).sort().join(',');
         if (previous !== members || data.commentsAvailability !== 'available') {
           request.current?.abort(); request.current = null; setBusy(false);
-          page.comments = createComments(data.posts); initialLoad.current = false;
+          page.comments = createComments(data.posts);
         }
         page.detail = data;
         writePostCache(cacheKey, data);
@@ -94,7 +93,10 @@ export default function PostDetail() {
       page.comments = updated; setComments(updated);
       requestAnimationFrame(() => {
         if (controller.signal.aborted) return;
-        if (Math.abs(window.scrollY - position.y) > 2) return;
+        if (Math.abs(window.scrollY - position.y) > 2) {
+          page.position = capturePosition();
+          return;
+        }
         const target = anchor && [...document.querySelectorAll<HTMLElement>('[data-comment-key]')].find(node => node.dataset.commentKey === anchor.key);
         if (target && anchor) window.scrollBy(0, target.getBoundingClientRect().top - anchor.offset);
         else restorePosition(position);
@@ -106,10 +108,15 @@ export default function PostDetail() {
   };
 
   useEffect(() => {
-    if (verified && detail?.commentsAvailability === 'available' && !initialLoad.current) {
-      initialLoad.current = true;
-      if (!page.comments?.displayed.length && !page.comments?.streams.some(stream => stream.error) && !commentsComplete(page.comments!)) void load();
+    if (verified && detail?.commentsAvailability === 'available') {
+      if (!page.comments?.displayed.length && !page.comments?.streams.some(stream => stream.error) && !commentsComplete(page.comments!)) {
+        void load();
+      }
     }
+    return () => {
+      request.current?.abort();
+      request.current = null;
+    };
   }, [verified, detail]);
 
   return <section className="post-detail feed" aria-label="帖子详情">
@@ -124,7 +131,7 @@ export default function PostDetail() {
         <p className="comment-note">整组评论按时间最新优先，仅供阅读。</p>
         {detail.commentsAvailability === 'local-only' ? <p role="status">仅本地数据模式，原站评论不可用。</p> : detail.commentsAvailability === 'unsupported' ? <p role="status">此来源暂不支持原站评论。</p> : comments && <>
           {comments.displayed.map(comment => <article className="comment" key={commentKey(comment)} data-comment-key={commentKey(comment)}>
-            <header><strong>{comment.author}</strong><time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('zh-CN')}</time></header>
+            <header><strong>{comment.author?.trim() || '匿名用户'}</strong><time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('zh-CN')}</time></header>
             <a href={comment.sourceUrl} target="_blank" rel="noreferrer noopener">{postSource(comment.postId).label} · 原站评论 #{comment.id}</a>
             <p className="comment-body">{commentTextParts(comment.body).map((part, index) => part.href ? <a key={index} href={part.href} target="_blank" rel="noreferrer noopener">{part.text}</a> : part.text)}</p>
           </article>)}

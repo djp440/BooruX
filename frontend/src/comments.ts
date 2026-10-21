@@ -47,17 +47,28 @@ export const commentsComplete = (state: CommentsState) => state.streams.every(st
 
 export const commentsNeedReload = (state: CommentsState) => state.streams.some(stream => stream.reloadRequired);
 
-class CommentPageError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+export class CommentPageError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'CommentPageError';
+  }
 }
 
 export async function fetchCommentPage(id: string, memberId: string, cursor: string | null, signal: AbortSignal): Promise<CommentPage> {
   const query = new URLSearchParams({ profileId: 'default', memberId, limit: '25' });
   if (cursor) query.set('cursor', cursor);
   const response = await fetch(`/api/posts/${encodeURIComponent(id)}/comments?${query}`, { signal });
-  const page = await response.json();
-  if (!response.ok || !page.success || page.availability !== 'available' || page.memberId !== memberId || !Array.isArray(page.comments)) {
-    throw new CommentPageError(page.error || '评论暂时无法加载，请重试', response.status);
+  let raw: any;
+  try {
+    raw = await response.json();
+  } catch (error) {
+    if (signal.aborted) throw error;
+    const statusMsg = response.status ? ` (HTTP ${response.status})` : '';
+    throw new CommentPageError(`服务响应异常${statusMsg}，请稍后重试`, response.status);
+  }
+  const page = raw;
+  if (!response.ok || !page?.success || page?.availability !== 'available' || page?.memberId !== memberId || !Array.isArray(page?.comments)) {
+    throw new CommentPageError(page?.error || '评论暂时无法加载，请重试', response.status);
   }
   return page;
 }
@@ -71,7 +82,13 @@ export async function loadComments(
 ): Promise<CommentsState> {
   const state: CommentsState = {
     displayed: [...current.displayed],
-    streams: current.streams.map(stream => ({ ...stream, buffer: [...stream.buffer], seen: new Set(stream.seen), error: retry ? '' : stream.error })),
+    streams: current.streams.map(stream => ({
+      ...stream,
+      buffer: [...stream.buffer],
+      seen: new Set(stream.seen),
+      error: retry ? '' : stream.error,
+      reloadRequired: retry ? false : stream.reloadRequired,
+    })),
   };
   const shown = new Set(state.displayed.map(commentKey));
   let emitted = 0;
@@ -85,7 +102,10 @@ export async function loadComments(
           const page = await request(stream.memberId, stream.nextCursor);
           if (!page.exhausted && (!page.nextCursor || page.nextCursor === stream.nextCursor)) throw new Error('评论分页未前进，请重试');
           if (page.comments.some(comment => comment.postId !== stream.memberId || !Number.isFinite(Date.parse(comment.createdAt)))) throw new Error('评论数据无效，请重试');
-          const unique = page.comments.filter(comment => {
+          const unique = page.comments.map(comment => ({
+            ...comment,
+            author: comment.author?.trim() || '匿名用户',
+          })).filter(comment => {
             const key = commentKey(comment);
             if (stream.seen.has(key)) return false;
             stream.seen.add(key);

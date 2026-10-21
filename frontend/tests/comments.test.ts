@@ -1,6 +1,15 @@
 import { describe, expect, spyOn, test } from 'bun:test';
-import { commentKey, commentTextParts, commentsComplete, commentsNeedReload, compareComments, createComments, fetchCommentPage, loadComments } from '../src/comments';
-import type { Comment, CommentPage } from '../src/comments';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { BookmarkProvider } from '../src/Bookmarks';
+import { PageSessionProvider } from '../src/page-session';
+import PostDetail from '../src/PostDetail';
+import { writePostCache } from '../src/post-cache';
+import { CommentPageError, commentKey, commentTextParts, commentsComplete, commentsNeedReload, compareComments, createComments, fetchCommentPage, loadComments } from '../src/comments';
+import type { Comment, CommentPage, PostDetailData } from '../src/comments';
 import type { Post } from '../src/feed';
 
 const posts = (ids: string[]) => ids.map(id => ({ id } as Post));
@@ -114,5 +123,173 @@ describe('整组原站评论', () => {
     expect(parts.filter(part => part.href).map(part => part.href)).toEqual(['https://example.org/a?q=1', 'https://example.net/']);
     expect(commentKey(comment('a', 'b:c', 1))).not.toBe(commentKey(comment('a:b', 'c', 1)));
     expect(compareComments(comment('a', '1', 2), comment('a', '2', 1))).toBeLessThan(0);
+  });
+  test('fetchCommentPage 捕获 502/504 等非 JSON 网关响应，包装为 CommentPageError 而非 JSON 语法异常', async () => {
+    for (const status of [502, 504]) {
+      const fetchMock = spyOn(globalThis, 'fetch').mockImplementation((async () => {
+        return new Response('<html><body>Gateway Error</body></html>', {
+          status,
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }) as unknown as typeof fetch);
+      try {
+        let thrown: unknown;
+        try {
+          await fetchCommentPage('post-1', 'member-1', null, new AbortController().signal);
+        } catch (err) {
+          thrown = err;
+        }
+        expect(thrown).toBeInstanceOf(CommentPageError);
+        expect((thrown as any).status).toBe(status);
+        expect((thrown as any).message).toContain(String(status));
+      } finally {
+        fetchMock.mockRestore();
+      }
+    }
+  });
+  test('loadComments 重试时对称重置各流的 reloadRequired 为 false', async () => {
+    let state = createComments(posts(['a', 'b']));
+    state = await loadComments(state, async member => {
+      if (member === 'a') throw new CommentPageError('Conflict', 409);
+      return page(member, [comment(member, '1', 10)]);
+    });
+    expect(state.streams[0].reloadRequired).toBe(true);
+    expect(commentsNeedReload(state)).toBe(true);
+
+    state = await loadComments(state, async member => {
+      return page(member, [comment(member, '2', 20)]);
+    }, true);
+
+    expect(state.streams[0].reloadRequired).toBe(false);
+    expect(state.streams[1].reloadRequired).toBe(false);
+    expect(commentsNeedReload(state)).toBe(false);
+  });
+  test('匿名作者兜底：评论作者字段缺失或空白时兜底为“匿名用户”', async () => {
+    const rawComment = (author: string): Comment => ({
+      postId: 'a',
+      id: 'c1',
+      source: 'danbooru',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      author,
+      body: 'test body',
+      sourceUrl: 'https://example.org',
+    });
+    for (const badAuthor of ['', '   ', undefined as unknown as string]) {
+      const state = await loadComments(createComments(posts(['a'])), async member => {
+        return page(member, [rawComment(badAuthor)]);
+      });
+      expect(state.displayed[0].author).toBe('匿名用户');
+    }
+  });
+});
+
+describe('评论区样式与触控规范静态断言', () => {
+  const cssPath = resolve(__dirname, '../src/style.css');
+  const css = readFileSync(cssPath, 'utf-8');
+
+  test('评论区字阶收敛与 flex 列间距接管', () => {
+    // .comment 采用声明式 flex 列布局与 gap: 6px
+    expect(css).toMatch(/\.comment\s*\{[^}]*display:\s*flex;/);
+    expect(css).toMatch(/\.comment\s*\{[^}]*flex-direction:\s*column;/);
+    expect(css).toMatch(/\.comment\s*\{[^}]*gap:\s*6px;/);
+    // .comment-body 14px 字阶、行高 1.6，margin 归零接管段落间距
+    expect(css).toMatch(/\.comment-body\s*\{[^}]*font-size:\s*14px;/);
+    expect(css).toMatch(/\.comment-body\s*\{[^}]*line-height:\s*1\.6;/);
+    expect(css).toMatch(/\.comment-body\s*\{[^}]*margin:\s*0;/);
+  });
+
+  test('媒体失败态 fade-enter 180ms 淡入与 44px 触控工效', () => {
+    expect(css).toContain('@keyframes fade-enter');
+    expect(css).toMatch(/\.media-message\s*\{[^}]*animation:[^}]*fade-enter\s+180ms/);
+    expect(css).toMatch(/\.media-message\s+a\s*\{[^}]*min-height:\s*44px;/);
+  });
+});
+
+describe('PostDetail 与 React 19 StrictMode 容错规范', () => {
+  const postDetailPath = resolve(__dirname, '../src/PostDetail.tsx');
+  const postDetailCode = readFileSync(postDetailPath, 'utf-8');
+
+  test('移除 initialLoad Ref 闭锁，防止 React 19 StrictMode 双重挂载下锁死', () => {
+    expect(postDetailCode).not.toContain('initialLoad');
+  });
+
+  test('视口纵向滚动主动发生时捕获并更新阅读坐标', () => {
+    expect(postDetailCode).toMatch(
+      /if\s*\(\s*Math\.abs\(window\.scrollY\s*-\s*position\.y\)\s*>\s*2\s*\)\s*\{\s*page\.position\s*=\s*capturePosition\(\);\s*return;\s*\}/,
+    );
+  });
+
+  test('React 19 StrictMode 模拟双挂载与取消重连：首个请求 abort 后，新挂载能够幂等发起并成功拉取评论', async () => {
+    let callCount = 0;
+    const streamPosts = posts(['member-1']);
+    let state = createComments(streamPosts);
+
+    const controller1 = new AbortController();
+    const firstRequestPromise = loadComments(state, async (member, cursor) => {
+      callCount++;
+      return new Promise<CommentPage>((_, reject) => {
+        controller1.signal.addEventListener('abort', () => {
+          reject(new DOMException('The user aborted a request.', 'AbortError'));
+        });
+      });
+    });
+
+    controller1.abort();
+    await firstRequestPromise;
+    expect(callCount).toBe(1);
+
+    const secondRequestPromise = loadComments(state, async (member, cursor) => {
+      callCount++;
+      return page(member, [comment(member, 'c1', 1)]);
+    });
+
+    const result2 = await secondRequestPromise;
+    expect(callCount).toBe(2);
+    expect(result2.displayed.length).toBe(1);
+    expect(result2.displayed[0].id).toBe('c1');
+    expect(commentsComplete(result2)).toBe(true);
+  });
+
+  test('PostDetail 渲染匿名评论：缺失 author 字段时渲染“匿名用户”，不产生空白无内容标签', () => {
+    const detailData: PostDetailData = {
+      groupId: 'danbooru-101',
+      familyComplete: true,
+      commentsAvailability: 'available',
+      success: true,
+      posts: [{
+        id: 'danbooru-101',
+        title: 'Post 101',
+        imageUrl: 'https://example.org/101.jpg',
+        mediaType: 'image',
+        parentId: null,
+        hasChildren: false,
+        tags: [],
+      }],
+    };
+    writePostCache('detail:default:danbooru-101', detailData);
+
+    const html = renderToString(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: ['/posts/danbooru-101'] },
+        React.createElement(
+          BookmarkProvider,
+          null,
+          React.createElement(
+            PageSessionProvider,
+            null,
+            React.createElement(
+              Routes,
+              null,
+              React.createElement(Route, { path: '/posts/:id', element: React.createElement(PostDetail) })
+            )
+          )
+        )
+      )
+    );
+
+    expect(html).toContain('帖子详情');
+    expect(postDetailCode).toContain("comment.author?.trim() || '匿名用户'");
+    expect(postDetailCode).not.toContain('<strong>{comment.author}</strong>');
   });
 });
