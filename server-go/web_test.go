@@ -10,7 +10,7 @@ import (
 func TestWebEntryAndHealthShareHandler(t *testing.T) {
 	h := testServer(t)
 
-	for _, path := range []string{"/", "/post/danbooru-42", "/settings"} {
+	for _, path := range []string{"/", "/post/danbooru-42", "/posts/danbooru-42", "/favorites/posts/yandere-1270993", "/settings"} {
 		w := do(h, http.MethodGet, path, "")
 		if w.Code != http.StatusOK {
 			t.Fatalf("GET %s: status = %d, body = %q", path, w.Code, w.Body.String())

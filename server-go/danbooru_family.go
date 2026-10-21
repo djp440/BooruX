@@ -34,7 +34,7 @@ func (s *server) danbooruFamilyHandler(w http.ResponseWriter, r *http.Request) {
 		} else if parent != nil && postRatingAllowed(str(parent["rating"]), rating) {
 			posts = append([]M{parent}, posts...)
 		}
-		writeJSON(w, 200, M{"success": true, "posts": posts, "source": "sqlite"})
+		writeJSON(w, 200, M{"success": true, "posts": s.visiblePosts(posts, orDefault(pid, "default")), "source": "sqlite"})
 		return
 	}
 	base := danbooruAPIURL
@@ -49,7 +49,7 @@ func (s *server) danbooruFamilyHandler(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 502, "关联媒体暂时无法加载，请重试")
 		return
 	}
-	writeJSON(w, 200, M{"success": true, "posts": posts, "source": "danbooru"})
+	writeJSON(w, 200, M{"success": true, "posts": s.visiblePosts(posts, orDefault(pid, "default")), "source": "danbooru"})
 }
 
 func fetchDanbooruFamily(ctx context.Context, base, id, rating string) ([]M, error) {

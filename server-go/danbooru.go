@@ -148,9 +148,7 @@ func extractSafebooruURLs(raw M) (string, string) {
 	if previewURL == "" && dir != "" && image != "" {
 		previewURL = fmt.Sprintf("https://safebooru.org/thumbnails/%s/thumbnail_%s", dir, extRe.ReplaceAllString(image, ".jpg"))
 	}
-	if imageURL == "" {
-		imageURL = firstNonEmpty(fileURL, previewURL)
-	}
+	imageURL = fileURL
 	if previewURL == "" {
 		previewURL = imageURL
 	}
@@ -202,7 +200,7 @@ func transformSafebooruPost(raw M) M {
 func transformYanderePost(raw M) M {
 	id := "yandere-" + str(raw["id"])
 	w, h := orNum(raw["width"], 1080), orNum(raw["height"], 1920)
-	imageURL := firstNonEmpty(str(raw["sample_url"]), str(raw["file_url"]), str(raw["jpeg_url"]), str(raw["preview_url"]))
+	imageURL := str(raw["file_url"])
 	previewURL := firstNonEmpty(str(raw["preview_url"]), str(raw["sample_url"]), str(raw["jpeg_url"]), str(raw["file_url"]))
 	list, tags := simpleTags(str(raw["tags"]))
 	title := strings.Join(list[:min(3, len(list))], " ")

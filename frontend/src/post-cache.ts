@@ -1,4 +1,5 @@
 import type { Post, PostsResponse } from './feed';
+import type { PostDetailData } from './comments';
 
 const STORAGE_KEY = 'boorux:post-cache:v1';
 const MAX_AGE = 24 * 60 * 60 * 1000;
@@ -33,6 +34,33 @@ export function readPostCache(key: string, storage?: StorageAccess): CachedPosts
     return entry;
   } catch {
     return null;
+  }
+}
+
+export function readPostDetailCache(key: string, storage?: StorageAccess): PostDetailData | null {
+  const data = readPostCache(key, storage)?.data;
+  if (!data || !('groupId' in data) || typeof data.groupId !== 'string' || !data.posts.some(post => post.id === data.groupId) ||
+    !('familyComplete' in data) || typeof data.familyComplete !== 'boolean' || !('commentsAvailability' in data) ||
+    (data.commentsAvailability !== 'available' && data.commentsAvailability !== 'local-only' && data.commentsAvailability !== 'unsupported')) return null;
+  return { ...data, groupId: data.groupId, familyComplete: data.familyComplete, commentsAvailability: data.commentsAvailability };
+}
+
+export function removePostCache(key: string, storage?: StorageAccess): void {
+  try {
+    const target = storage ?? localStorage;
+    const entries = JSON.parse(target.getItem(STORAGE_KEY) || '{}');
+    delete entries[key];
+    target.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // 与读取、写入一致，存储不可用时不阻断页面。
+  }
+}
+
+export function clearPostsCache(storage?: StorageAccess): void {
+  try {
+    (storage ?? localStorage).setItem(STORAGE_KEY, '{}');
+  } catch {
+    // 存储不可用时仅保留当前页面内存，不阻断设置保存。
   }
 }
 

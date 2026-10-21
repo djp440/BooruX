@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { isFresh, readPostCache, writePostCache } from '../src/post-cache';
+import { isFresh, readPostCache, readPostDetailCache, removePostCache, writePostCache } from '../src/post-cache';
+import type { PostDetailData } from '../src/comments';
 import type { PostsResponse } from '../src/feed';
 
 const data: PostsResponse = {
@@ -63,6 +64,36 @@ describe('帖子缓存', () => {
     expect(readPostCache('feed', store)?.data).toEqual(data);
     store.setItem('', JSON.stringify({ feed: { savedAt: Date.now(), data: { success: true, posts: [{ id: 123 }] } } }));
     expect(readPostCache('feed', store)).toBeNull();
+  });
+
+  test('详情保留组元数据且与列表隔离，失效时只移除对应详情', () => {
+    const store = storage();
+    const detail: PostDetailData = { ...data, groupId: 'danbooru-1', familyComplete: true, commentsAvailability: 'available' };
+    const key = 'detail:default:danbooru-1';
+    writePostCache('feed:default', data, store);
+    writePostCache(key, detail, store);
+    expect(readPostDetailCache(key, store)).toEqual(detail);
+    expect(readPostDetailCache('feed:default', store)).toBeNull();
+    expect(readPostDetailCache('detail:other:danbooru-1', store)).toBeNull();
+    removePostCache(key, store);
+    expect(readPostDetailCache(key, store)).toBeNull();
+    expect(readPostCache('feed:default', store)?.data).toEqual(data);
+    writePostCache(key, detail, store);
+    store.age(24 * 60 * 60 * 1000 + 1);
+    expect(readPostDetailCache(key, store)).toBeNull();
+  });
+
+  test('损坏详情字段不作为可用详情，缓存不可用可降级', () => {
+    const store = storage();
+    const key = 'detail:default:danbooru-1';
+    const detail: PostDetailData = { ...data, groupId: 'danbooru-1', familyComplete: true, commentsAvailability: 'available' };
+    for (const invalid of [{ ...detail, groupId: 'danbooru-2' }, { ...detail, familyComplete: 'yes' }, { ...detail, commentsAvailability: 'invalid' }]) {
+      writePostCache(key, invalid, store);
+      expect(readPostDetailCache(key, store)).toBeNull();
+    }
+    const unavailable = { getItem: () => { throw new Error('disabled'); }, setItem: () => { throw new Error('quota'); } };
+    expect(readPostDetailCache(key, unavailable)).toBeNull();
+    expect(() => removePostCache(key, unavailable)).not.toThrow();
   });
 
   test('缓存最多保留 40 项，原始媒体字节不写入本地存储', () => {

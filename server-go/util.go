@@ -81,6 +81,9 @@ func str(v any) string {
 
 func num(v any) float64 {
 	switch t := v.(type) {
+	case json.Number:
+		f, _ := t.Float64()
+		return f
 	case float64:
 		return t
 	case int64:

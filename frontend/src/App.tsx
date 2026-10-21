@@ -1,35 +1,44 @@
-import { BrowserRouter, NavLink, Outlet, Route, Routes } from 'react-router';
+import { BrowserRouter, Link, Outlet, Route, Routes, useLocation } from 'react-router';
 import PostFeed from './PostFeed';
+import PostDetail from './PostDetail';
+import Settings from './Settings';
 import { BookmarkProvider } from './Bookmarks';
+import { areaForPath, PageSessionProvider, usePageSession } from './page-session';
 
 function Layout() {
+  const { pathname } = useLocation();
+  const { store, save, goArea } = usePageSession();
   return (
     <div className="app-shell">
       <nav className="navigation" aria-label="主导航">
-        <NavLink to="/" end>首页</NavLink>
-        <NavLink to="/favorites">收藏</NavLink>
-        <NavLink to="/settings">设置</NavLink>
+        {(['home', 'favorites'] as const).map(area => {
+          const active = pathname !== '/settings' && areaForPath(pathname) === area;
+          return <Link key={area} to={store.lastVisit[area]?.path || (area === 'home' ? '/' : '/favorites')} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined}
+            onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); goArea(area); } }}>{area === 'home' ? '首页' : '收藏'}</Link>;
+        })}
+        <Link to="/settings" className={pathname === '/settings' ? 'active' : ''} aria-current={pathname === '/settings' ? 'page' : undefined} onClick={save}>设置</Link>
       </nav>
-      <main id="content" className="content">
-        <Outlet />
-      </main>
+      <main id="content" className="content"><Outlet /></main>
     </div>
   );
 }
-
+function FeedRoute({ kind }: { kind: 'home' | 'favorites' }) {
+  const { page } = usePageSession();
+  return <PostFeed key={page.id} kind={kind} />;
+}
+function DetailRoute() {
+  const { page } = usePageSession();
+  return <PostDetail key={page.id} />;
+}
 export default function App() {
-  return (
-    <BrowserRouter>
-      <BookmarkProvider>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<PostFeed key="home" kind="home" />} />
-            <Route path="favorites" element={<PostFeed key="favorites" kind="favorites" />} />
-            <Route path="settings" element={<h1>设置</h1>} />
-            <Route path="*" element={<h1>页面不存在</h1>} />
-          </Route>
-        </Routes>
-      </BookmarkProvider>
-    </BrowserRouter>
-  );
+  return <BrowserRouter><BookmarkProvider><PageSessionProvider>
+    <Routes><Route element={<Layout />}>
+      <Route index element={<FeedRoute kind="home" />} />
+      <Route path="posts/:id" element={<DetailRoute />} />
+      <Route path="favorites" element={<FeedRoute kind="favorites" />} />
+      <Route path="favorites/posts/:id" element={<DetailRoute />} />
+      <Route path="settings" element={<Settings />} />
+      <Route path="*" element={<h1>页面不存在</h1>} />
+    </Route></Routes>
+  </PageSessionProvider></BookmarkProvider></BrowserRouter>;
 }

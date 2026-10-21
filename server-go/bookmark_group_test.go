@@ -35,6 +35,9 @@ func TestBookmarkFamilyRemovalIsScopedAndKeepsOtherGroups(t *testing.T) {
 			}
 		}
 	}
+	if _, err := db.Exec("INSERT INTO media_cache(post_id,source_url,status,storage_format,updated_at) VALUES(?,?,'ready','webp',?)", "group-child", "https://x/original.png", nowISO()); err != nil {
+		t.Fatal(err)
+	}
 	h := (&server{db: db}).routes()
 	w := do(h, http.MethodPost, "/api/posts/group-child/bookmark?profileId=default", `{"bookmarked":false,"family":true}`)
 	if w.Code != http.StatusOK {
@@ -58,6 +61,18 @@ func TestBookmarkFamilyRemovalIsScopedAndKeepsOtherGroups(t *testing.T) {
 		if !exists(db, "SELECT 1 FROM profile_bookmarks WHERE profile_id=? AND post_id=?", otherID, str(item["id"])) {
 			t.Fatal("another profile was changed")
 		}
+	}
+	for _, item := range items {
+		if !exists(db, "SELECT 1 FROM posts WHERE id=?", str(item["id"])) {
+			t.Fatal("取消收藏删除帖子")
+		}
+	}
+	if !exists(db, "SELECT 1 FROM media_cache WHERE post_id=? AND source_url=?", "group-child", "https://x/original.png") {
+		t.Fatal("取消收藏删除媒体缓存")
+	}
+	child, err := getPostByID(db, "group-child", defaultProfileID)
+	if err != nil || child["originalUrl"] != "https://x/original.png" {
+		t.Fatal("原始 URL 丢失", child, err)
 	}
 	// 不带 family 的旧接口仍然只取消单个帖子。
 	for _, id := range []string{"group-parent", "group-child"} {

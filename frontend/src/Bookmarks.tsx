@@ -13,6 +13,7 @@ type BookmarkState = {
   action: { id: string; message: string; error: boolean } | null;
   refresh: () => Promise<void>;
   toggle: (id: string, members: Post[]) => Promise<void>;
+  clear: () => void;
 };
 
 const BookmarkContext = createContext<BookmarkState | null>(null);
@@ -35,6 +36,14 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
     setSnapshot(data);
     writePostCache('favorites:default', data);
   }, []);
+
+  // 设置改变后丢弃可能属旧分级的收藏快照，并作废进行中的旧请求。
+  const clear = useCallback(() => {
+    revision.current++;
+    request.current = null;
+    replace({ success: true, posts: [] });
+    setReady(false);
+  }, [replace]);
 
   const refresh = useCallback((): Promise<void> => {
     if (mutationPending.current) return Promise.resolve();
@@ -61,7 +70,8 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(async (id: string, members: Post[]) => {
     if (mutationPending.current || !members.length) return;
     const current = snapshotRef.current.posts;
-    const saved = current.find(post => (post.parentId || post.id) === id);
+    const memberIds = new Set(members.map(post => post.id));
+    const saved = current.find(post => (post.parentId || post.id) === id || memberIds.has(post.id));
     const target = saved || members.find(post => post.id === id) || members[0];
     mutationPending.current = true;
     revision.current++;
@@ -71,7 +81,7 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
       const post = await setPostBookmark(target.id, !saved);
       const latest = snapshotRef.current.posts;
       const posts = saved
-        ? latest.filter(item => (item.parentId || item.id) !== id)
+        ? latest.filter(item => (item.parentId || item.id) !== (saved.parentId || saved.id) && !memberIds.has(item.id))
         : uniquePosts([post, ...latest]);
       replace({ success: true, posts });
       setReady(true);
@@ -86,7 +96,7 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
   }, [replace]);
 
   return (
-    <BookmarkContext.Provider value={{ snapshot, ready, loading, error, pendingId, action, refresh, toggle }}>
+    <BookmarkContext.Provider value={{ snapshot, ready, loading, error, pendingId, action, refresh, toggle, clear }}>
       {children}
     </BookmarkContext.Provider>
   );

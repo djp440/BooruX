@@ -126,6 +126,8 @@ func (s *server) routes() http.Handler {
 // ---------- posts ----------
 
 func (s *server) postRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/posts/{id}/detail", s.postDetailHandler)
+	mux.HandleFunc("GET /api/posts/{id}/comments", s.postCommentsHandler)
 	mux.HandleFunc("GET /api/posts", func(w http.ResponseWriter, r *http.Request) {
 		pid, ok := s.optionalProfile(w, r, true)
 		if !ok {
