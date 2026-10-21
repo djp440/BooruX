@@ -211,7 +211,6 @@ const SessionContext = createContext<{
   back: () => void;
   goArea: (area: Area) => void;
   invalidate: () => void;
-  scrollToTop: () => void;
 } | null>(null);
 
 export function PageSessionProvider({ children }: { children: ReactNode }) {
@@ -266,16 +265,6 @@ export function PageSessionProvider({ children }: { children: ReactNode }) {
     };
   }, [page, location.key]);
 
-  const scrollToTop = () => {
-    scrollingToTopRef.current = true;
-    page.position = { y: 0, anchors: [] };
-    const currentArea = areaForPath(location.pathname);
-    if (store.lastVisit[currentArea]) {
-      store.lastVisit[currentArea]!.position = { y: 0, anchors: [] };
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   return <SessionContext.Provider value={{
     store,
     page,
@@ -302,7 +291,6 @@ export function PageSessionProvider({ children }: { children: ReactNode }) {
       }
     },
     invalidate: () => store.invalidateContent(),
-    scrollToTop,
   }}>{children}</SessionContext.Provider>;
 }
 

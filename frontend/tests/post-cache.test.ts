@@ -116,6 +116,27 @@ describe('帖子缓存', () => {
     expect(() => writePostCache('feed', data, unavailable)).not.toThrow();
   });
 
+  test('总序列化体积超过 MAX_SIZE 时主动淘汰最旧项直到容纳新项，单项超大则安全放弃', () => {
+    const store = storage();
+    const largeTitle = 'a'.repeat(400 * 1024);
+    const item1: PostsResponse = { ...data, posts: [{ ...data.posts[0], id: 'item-1', title: largeTitle }] };
+    const item2: PostsResponse = { ...data, posts: [{ ...data.posts[0], id: 'item-2', title: largeTitle }] };
+    const item3: PostsResponse = { ...data, posts: [{ ...data.posts[0], id: 'item-3', title: largeTitle }] };
+
+    writePostCache('item:1', item1, store);
+    store.age(2000);
+    writePostCache('item:2', item2, store);
+    store.age(1000);
+
+    // 写入第 3 项，此时 3 项总和超过 MAX_SIZE (2 MiB)
+    writePostCache('item:3', item3, store);
+
+    // 最旧的 item:1 应被淘汰，而 item:2 与 item:3 应被保留
+    expect(readPostCache('item:1', store)).toBeNull();
+    expect(readPostCache('item:2', store)).not.toBeNull();
+    expect(readPostCache('item:3', store)).not.toBeNull();
+  });
+
   test('writePostCache 在内存中完成淘汰，写入过程单次最多调用 1 次 JSON.stringify', () => {
     const store = storage();
     // 预填 40 项

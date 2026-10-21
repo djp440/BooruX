@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from 'bun:test';
+import { resolve } from 'node:path';
 import React, { act } from 'react';
 import { RATING_OPTIONS, THEME_OPTIONS, THEME_STORAGE_KEY, applyTheme, isRating, isTheme, readCachedTheme } from '../src/rating-settings';
 import { PageSessions } from '../src/page-session';
@@ -104,7 +105,7 @@ describe('设置页背景色', () => {
     expect(() => clearPostsCache(unavailable)).not.toThrow();
   });
   test('单选卡片选中态高对比度底色与文本边框，消除不可见对比与禁用语义反转', async () => {
-    const css = await Bun.file('src/style.css').text();
+    const css = await Bun.file(resolve(__dirname, '../src/style.css')).text();
     expect(css).toMatch(/--selected-bg:\s*#f3f4f6;/);
     expect(css).toMatch(/\.rating-option:has\(input:checked\)\s*\{[^}]*border-color:\s*var\(--text\);/);
   });
@@ -337,12 +338,21 @@ describe('设置页背景色', () => {
     }
   });
 
-  test('点击“取消更改”时主动将焦点回退至同一表单内的 submit 按钮，防止元素卸载导致焦点跌落', async () => {
+  test('点击“取消更改”时主动将焦点重定向至当前激活的单选项，避免禁用按钮导致焦点跌落至 body', async () => {
     let focusedElement: any = null;
     const rootEl = {
       dataset: { theme: undefined },
       removeAttribute: () => {},
     };
+
+    function findElements(node: any, match: (el: any) => boolean): any[] {
+      const results: any[] = [];
+      if (match(node)) results.push(node);
+      for (const child of node.childNodes || []) {
+        results.push(...findElements(child, match));
+      }
+      return results;
+    }
 
     class Element {
       nodeType = 1; nodeName = 'DIV'; tagName = 'DIV'; style = {}; childNodes: any[] = []; ownerDocument = null as any;
@@ -350,6 +360,13 @@ describe('设置页背景色', () => {
       addEventListener() {} removeEventListener() {} appendChild(c: any) { this.childNodes.push(c); return c; }
       removeChild(c: any) { return c; } insertBefore(c: any) { return c; } setAttribute() {} removeAttribute() {}
       focus() { focusedElement = this; }
+      querySelector(selector: string): any {
+        const matchVal = selector.match(/input\[value="([^"]+)"\]/);
+        if (matchVal) {
+          return findElements(this, el => el.nodeName === 'INPUT' && el.value === matchVal[1])[0] || null;
+        }
+        return null;
+      }
     }
     class Document {
       nodeType = 9; nodeName = '#document'; defaultView = null as any;
@@ -406,21 +423,37 @@ describe('设置页背景色', () => {
         );
       });
 
-      // 在生成的 DOM 中定位表单、radio 及 submit 按钮
-      function findElements(node: any, match: (el: any) => boolean): any[] {
-        const results: any[] = [];
-        if (match(node)) results.push(node);
-        for (const child of node.childNodes || []) {
-          results.push(...findElements(child, match));
-        }
-        return results;
+      function getReactProps(node: any): any {
+        const key = Object.keys(node).find(k => k.startsWith('__reactProps'));
+        return key ? node[key] : {};
       }
 
-      const buttons = findElements(container, el => el.nodeName === 'BUTTON');
-      const radios = findElements(container, el => el.nodeName === 'INPUT' && el.type === 'radio');
+      // 找到主题单选框中的 'dark' 选项（当前已保存值为 'system'）
+      const darkRadio = findElements(container, el => el.nodeName === 'INPUT' && el.value === 'dark')[0];
+      expect(darkRadio).toBeDefined();
 
-      expect(buttons.length).toBeGreaterThan(0);
-      expect(radios.length).toBeGreaterThan(0);
+      const props = getReactProps(darkRadio);
+
+      // 用户临时切换预览为 'dark'
+      await act(async () => {
+        props.onChange?.({ target: darkRadio });
+      });
+
+      // 此时表单呈现“取消更改”按钮
+      const cancelButtons = findElements(container, el => el.nodeName === 'BUTTON' && el.textContent === '取消更改');
+      expect(cancelButtons.length).toBeGreaterThan(0);
+      const cancelBtn = cancelButtons[0];
+
+      // 用户点击“取消更改”
+      await act(async () => {
+        getReactProps(cancelBtn).onClick?.();
+      });
+
+      // 验证焦点主动重定向到当前激活/恢复的 'system' 单选框，避免禁用状态导致焦点跌落至 body
+      expect(focusedElement).toBeDefined();
+      expect(focusedElement.nodeName).toBe('INPUT');
+      expect(focusedElement.value).toBe('system');
+      expect(focusedElement.disabled).toBeFalsy();
 
       await act(async () => {
         root.unmount();

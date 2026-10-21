@@ -20,8 +20,8 @@ export default function Settings() {
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
 
-  const themeSubmitRef = useRef<HTMLButtonElement>(null);
-  const ratingSubmitRef = useRef<HTMLButtonElement>(null);
+  const themeFormRef = useRef<HTMLFormElement>(null);
+  const ratingFormRef = useRef<HTMLFormElement>(null);
   const savedThemeRef = useRef(theme);
 
   useEffect(() => {
@@ -101,13 +101,32 @@ export default function Settings() {
     }
   };
 
+  const cancelTheme = () => {
+    setThemeDraft(theme);
+    applyTheme(theme, false);
+    setSaveError('');
+    setRetrySave(null);
+    setNotice('');
+    const target = themeFormRef.current?.querySelector<HTMLInputElement>(`input[value="${theme}"]`);
+    target?.focus();
+  };
+
+  const cancelRating = () => {
+    setDraft(rating);
+    setSaveError('');
+    setRetrySave(null);
+    setNotice('');
+    const target = ratingFormRef.current?.querySelector<HTMLInputElement>(`input[value="${rating}"]`);
+    target?.focus();
+  };
+
   return <section className="settings" aria-label="设置">
     <h1>设置</h1>
     {loadError && <p className="setting-error" role="alert">{loadError}<button type="button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>}
     {saveError && <p className="setting-error" role="alert">{saveError}{retrySave && <button type="button" onClick={retrySave}>重试</button>}</p>}
     {notice && <p className="setting-notice" role="status">{notice}</p>}
     {loading ? <p role="status">正在加载设置…</p> : <>
-      <form className="setting-item" aria-labelledby="theme-heading" onSubmit={event => { event.preventDefault(); void saveTheme(); }}>
+      <form ref={themeFormRef} className="setting-item" aria-labelledby="theme-heading" onSubmit={event => { event.preventDefault(); void saveTheme(); }}>
         <div>
           <h2 id="theme-heading">背景色</h2>
           <p>选择界面外观；跟随系统会随设备设置自动切换。</p>
@@ -120,11 +139,11 @@ export default function Settings() {
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button ref={themeSubmitRef} type="submit" className="primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
-          {themeDraft !== theme && <button type="button" disabled={saving !== ''} onClick={() => { setThemeDraft(theme); applyTheme(theme, false); setSaveError(''); setRetrySave(null); setNotice(''); themeSubmitRef.current?.focus(); }}>取消更改</button>}
+          <button type="submit" className="primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
+          {themeDraft !== theme && <button type="button" disabled={saving !== ''} onClick={cancelTheme}>取消更改</button>}
         </div>
       </form>
-      <form className="setting-item" aria-labelledby="rating-heading" onSubmit={event => { event.preventDefault(); void saveRating(); }}>
+      <form ref={ratingFormRef} className="setting-item" aria-labelledby="rating-heading" onSubmit={event => { event.preventDefault(); void saveRating(); }}>
         <div>
           <h2 id="rating-heading">年龄分级</h2>
           <p>决定首页、搜索结果、收藏和详情中可见的内容。保存后会重新加载这些内容。</p>
@@ -137,8 +156,8 @@ export default function Settings() {
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button ref={ratingSubmitRef} type="submit" className="primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
-          {draft !== rating && <button type="button" disabled={saving !== ''} onClick={() => { setDraft(rating); setSaveError(''); setRetrySave(null); setNotice(''); ratingSubmitRef.current?.focus(); }}>取消更改</button>}
+          <button type="submit" className="primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
+          {draft !== rating && <button type="button" disabled={saving !== ''} onClick={cancelRating}>取消更改</button>}
         </div>
       </form>
     </>}

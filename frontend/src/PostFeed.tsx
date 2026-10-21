@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchPosts, groupPosts, uniquePosts } from './feed';
 import type { PostsResponse } from './feed';
 import { isFresh, readPostCache, writePostCache } from './post-cache';
@@ -15,7 +15,10 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
   const search = (value: string) => {
     const next = normalizeTagQuery(value);
     setDraft(next);
-    if (next) setHistory(current => saveSearchHistory(current, next));
+    if (next) {
+      const updatedHistory = saveSearchHistory(history, next);
+      setHistory(updatedHistory);
+    }
     if (next === query) return;
     page.feedQuery = next;
     page.feed = undefined;
@@ -52,6 +55,8 @@ export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorite
   const [initialCache] = useState(() => readPostCache(cacheKey));
   const [restoredFeed] = useState(page.feed);
   const [feed, setFeed] = useState<PostsResponse>(page.feed || initialCache?.data || { success: true, posts: [], nextCursor: '' });
+  const feedRef = useRef(feed);
+  feedRef.current = feed;
   const [cursor, setCursor] = useState('');
   const [loading, setLoading] = useState(!page.feed && !initialCache);
   const [error, setError] = useState('');
@@ -68,15 +73,14 @@ export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorite
     fetchPosts(`/api/danbooru/posts?${params}`, controller.signal)
       .then(data => {
         if (controller.signal.aborted) return;
-        setFeed(current => {
-          const updated: PostsResponse = {
-            ...data,
-            posts: uniquePosts(cursor ? [...current.posts, ...data.posts] : data.posts),
-          };
-          page.feed = updated;
-          writePostCache(cacheKey, updated);
-          return updated;
-        });
+        const currentPosts = cursor ? feedRef.current.posts : [];
+        const updated: PostsResponse = {
+          ...data,
+          posts: uniquePosts(cursor ? [...currentPosts, ...data.posts] : data.posts),
+        };
+        page.feed = updated;
+        writePostCache(cacheKey, updated);
+        setFeed(updated);
       })
       .catch(() => {
         if (!controller.signal.aborted) setError('帖子加载失败，请检查网络或服务后重试。');
@@ -85,7 +89,7 @@ export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorite
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [cursor, attempt, initialCache, kind, cacheKey, query]);
+  }, [cursor, attempt, initialCache, kind, cacheKey, query, page]);
 
   useEffect(() => { if (kind === 'home' && initialCache && !page.feed) page.feed = initialCache.data; }, [initialCache, kind, page]);
 

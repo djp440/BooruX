@@ -91,7 +91,15 @@ export function writePostCache(key: string, data: PostsResponse, storage?: Stora
       delete entries[item];
       count--;
     }
-    const serialized = JSON.stringify(entries);
+    let serialized = JSON.stringify(entries);
+    if (serialized.length * 2 > MAX_SIZE) {
+      const candidates = remainingOlderKeys.filter(item => item in entries);
+      for (const item of candidates) {
+        delete entries[item];
+        serialized = JSON.stringify(entries);
+        if (serialized.length * 2 <= MAX_SIZE) break;
+      }
+    }
     // shortcut: 单条结果超过 2 MiB 时仅留在页面内存，需大量离线帖子时改用 IndexedDB。
     if (serialized.length * 2 <= MAX_SIZE) target.setItem(STORAGE_KEY, serialized);
   } catch {
