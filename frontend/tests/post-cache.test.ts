@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { isFresh, readPostCache, readPostDetailCache, removePostCache, writePostCache } from '../src/post-cache';
 import type { PostDetailData } from '../src/comments';
 import type { PostsResponse } from '../src/feed';
@@ -114,5 +114,37 @@ describe('帖子缓存', () => {
     const unavailable = { getItem: () => { throw new Error('disabled'); }, setItem: () => { throw new Error('quota'); } };
     expect(readPostCache('feed', unavailable)).toBeNull();
     expect(() => writePostCache('feed', data, unavailable)).not.toThrow();
+  });
+
+  test('writePostCache 在内存中完成淘汰，写入过程单次最多调用 1 次 JSON.stringify', () => {
+    const store = storage();
+    // 预填 40 项
+    for (let i = 0; i < 40; i++) writePostCache(`feed:${i}`, data, store);
+    
+    // 写入第 41 项触发淘汰，监听 JSON.stringify
+    const stringifySpy = spyOn(JSON, 'stringify');
+    try {
+      writePostCache('feed:41', data, store);
+      // 整个写入过程单次最多只调用 1 次 JSON.stringify
+      expect(stringifySpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stringifySpy.mockRestore();
+    }
+  });
+
+  test('removePostCache 在 key 不存在时直接 return，不执行 setItem 写回', () => {
+    let setItemCalls = 0;
+    const store = {
+      getItem: () => JSON.stringify({ 'feed:1': { savedAt: Date.now(), data } }),
+      setItem: () => { setItemCalls++; },
+    };
+
+    // key 不存在
+    removePostCache('feed:nonexistent', store);
+    expect(setItemCalls).toBe(0);
+
+    // key 存在
+    removePostCache('feed:1', store);
+    expect(setItemCalls).toBe(1);
   });
 });

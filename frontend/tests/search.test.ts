@@ -20,6 +20,9 @@ describe('首页 tag 搜索', () => {
     writePostCache(searchCacheKey(''), home, store);
     writePostCache(searchCacheKey('sky blue_hair'), search, store);
     expect(searchCacheKey('')).toBe('feed:default');
+    expect(searchCacheKey('   ')).toBe('feed:default');
+    expect(searchCacheKey('  sky   blue_hair  ')).toBe('feed:default:tags:sky blue_hair');
+    expect(searchCacheKey('\n  hatsune_miku\t\t vocaloid  \n')).toBe('feed:default:tags:hatsune_miku vocaloid');
     expect(readPostCache(searchCacheKey(''), store)?.data).toEqual(home);
     expect(readPostCache(searchCacheKey('sky blue_hair'), store)?.data).toEqual(search);
     expect(readPostCache(searchCacheKey('blue_hair'), store)).toBeNull();
