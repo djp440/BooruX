@@ -5,11 +5,12 @@ import Settings from './Settings';
 import { BookmarkProvider } from './Bookmarks';
 import { areaForPath, PageSessionProvider, usePageSession } from './page-session';
 
-function Layout() {
+export function Layout() {
   const { pathname } = useLocation();
   const { store, save, goArea } = usePageSession();
   return (
     <div className="app-shell">
+      <a href="#content" className="skip-link">跳到主要内容</a>
       <nav className="navigation" aria-label="主导航">
         {(['home', 'favorites'] as const).map(area => {
           const active = pathname !== '/settings' && areaForPath(pathname) === area;
@@ -18,7 +19,7 @@ function Layout() {
         })}
         <Link to="/settings" className={pathname === '/settings' ? 'active' : ''} aria-current={pathname === '/settings' ? 'page' : undefined} onClick={save}>设置</Link>
       </nav>
-      <main id="content" className="content"><Outlet /></main>
+      <main id="content" className="content" tabIndex={-1}><Outlet /></main>
     </div>
   );
 }
