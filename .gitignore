@@ -31,3 +31,4 @@ Thumbs.db
 # 工具缓存与本地记录
 .e2e-data/
 .codebase-memory/
+.scratch/
