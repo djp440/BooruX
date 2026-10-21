@@ -54,8 +54,8 @@ func webPath(urlPath string) (string, bool) {
 }
 
 func serveEmbedded(w http.ResponseWriter, r *http.Request, name string) bool {
-	name = path.Join(webRoot, name)
-	f, err := webContent.Open(name)
+	filePath := path.Join(webRoot, name)
+	f, err := webContent.Open(filePath)
 	if err != nil {
 		return false
 	}
@@ -64,6 +64,18 @@ func serveEmbedded(w http.ResponseWriter, r *http.Request, name string) bool {
 	if err != nil || info.IsDir() {
 		return false
 	}
-	http.ServeFileFS(w, r, webContent, name)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if strings.HasPrefix(name, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if name == "index.html" {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	}
+	if strings.HasSuffix(r.URL.Path, "/index.html") {
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = strings.TrimSuffix(r.URL.Path, "index.html")
+		http.ServeFileFS(w, r2, webContent, filePath)
+		return true
+	}
+	http.ServeFileFS(w, r, webContent, filePath)
 	return true
 }
