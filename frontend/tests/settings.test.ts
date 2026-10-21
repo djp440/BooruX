@@ -15,7 +15,10 @@ describe('设置页背景色', () => {
     const root = {
       dataset: {
         get theme() { return attributes.get('data-theme'); },
-        set theme(value: string) { attributes.set('data-theme', value); },
+        set theme(value: string | undefined) {
+          if (typeof value === 'string') attributes.set('data-theme', value);
+          else attributes.delete('data-theme');
+        },
       },
       removeAttribute: (name: string) => { attributes.delete(name); },
     };

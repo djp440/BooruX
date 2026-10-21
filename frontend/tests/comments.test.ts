@@ -50,7 +50,7 @@ describe('整组原站评论', () => {
       const members = posts(['a', 'b']);
       const requested: string[] = [];
       let phase = 'initial';
-      const fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const fetchMock = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL) => {
         const url = new URL(String(input), 'http://localhost');
         const member = url.searchParams.get('memberId')!;
         const cursor = url.searchParams.get('cursor');
@@ -62,7 +62,7 @@ describe('整组原站评论', () => {
         if (phase === 'recovery' && failure === 409) return Response.json(page(member, [comment(member, 'fresh', 25)]));
         return Response.json(member === 'b' ? page(member, [comment(member, 'old-b', 1)])
           : cursor ? page(member, [comment(member, 'tail', 10)]) : page(member, [comment(member, 'old-a', 30)], 'deleted-anchor'));
-      });
+      }) as unknown as typeof fetch);
       try {
         const request = (member: string, cursor: string | null) => fetchCommentPage('a', member, cursor, new AbortController().signal);
         let state = await loadComments(createComments(members), request, false, 1);

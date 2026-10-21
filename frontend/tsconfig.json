@@ -15,11 +15,13 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "types": [
-      "vite/client"
+      "vite/client",
+      "bun"
     ]
   },
   "include": [
     "src",
+    "tests",
     "vite.config.ts"
   ]
 }
