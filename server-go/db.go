@@ -356,6 +356,7 @@ func formatPost(q querier, p M, profileID string) M {
 			imageURL = "/api/media/cache/" + urlPathEscape(id)
 		}
 	}
+	post["originalUrl"] = p["image_url"]
 	post["imageUrl"] = imageURL
 	return post
 }
@@ -635,6 +636,21 @@ func setBookmark(q querier, profileID, postID string, bookmarked bool) (M, error
 		return nil, err
 	}
 	appendServerLog("INFO", "PROFILE_BOOKMARK", fmt.Sprintf("Set bookmark %v for %s in %s", bookmarked, postID, profileID))
+	return getPostByID(q, postID, profileID)
+}
+
+func removeFamilyBookmarks(q querier, profileID, postID string) (M, error) {
+	post, err := getPostByID(q, postID, profileID)
+	if err != nil || post == nil {
+		return nil, err
+	}
+	root := firstNonEmpty(str(post["parentId"]), postID)
+	_, err = q.Exec(`DELETE FROM profile_bookmarks WHERE profile_id=?
+		AND post_id IN (SELECT id FROM posts WHERE id=? OR parent_id=?)`, profileID, root, root)
+	if err != nil {
+		return nil, err
+	}
+	appendServerLog("INFO", "PROFILE_BOOKMARK", "Removed family bookmarks for "+root+" in "+profileID)
 	return getPostByID(q, postID, profileID)
 }
 

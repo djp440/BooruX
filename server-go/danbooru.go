@@ -110,41 +110,18 @@ func variantURL(variants []any, types ...string) string {
 }
 
 func extractDanbooruURLs(raw M) (string, string) {
-	var imageURL, previewURL string
-	fileExt := strings.ToLower(str(raw["file_ext"]))
-	isVideo := inList(fileExt, "mp4", "webm", "mov", "m4v", "ogv")
 	var variants []any
 	if ma, ok := raw["media_asset"].(map[string]any); ok {
 		variants, _ = ma["variants"].([]any)
 	}
-	if isVideo {
-		imageURL = variantURL(variants, "original")
-		if imageURL == "" {
-			imageURL = firstNonEmpty(str(raw["file_url"]), str(raw["large_file_url"]))
-		}
-	}
-	if variants != nil {
-		if imageURL == "" {
-			imageURL = firstNonEmpty(variantURL(variants, "original"), variantURL(variants, "sample", "720x720"))
-		}
-		previewURL = firstNonEmpty(variantURL(variants, "720x720", "360x360", "sample"), variantURL(variants, "180x180"))
-	}
-	if imageURL == "" {
-		imageURL = firstNonEmpty(str(raw["large_file_url"]), str(raw["file_url"]), str(raw["preview_file_url"]))
-	}
-	if previewURL == "" {
-		previewURL = firstNonEmpty(str(raw["preview_file_url"]), str(raw["large_file_url"]), str(raw["file_url"]))
-	}
+	imageURL := firstNonEmpty(variantURL(variants, "original"), str(raw["file_url"]))
+	previewURL := firstNonEmpty(variantURL(variants, "720x720", "360x360", "sample", "180x180"), str(raw["preview_file_url"]), str(raw["large_file_url"]), str(raw["file_url"]))
 	md5 := str(raw["md5"])
 	if (imageURL == "" || previewURL == "") && len(md5) >= 4 {
 		s1, s2 := md5[:2], md5[2:4]
 		ext := orDefault(str(raw["file_ext"]), "jpg")
 		if imageURL == "" {
-			if isVideo {
-				imageURL = fmt.Sprintf("https://cdn.donmai.us/original/%s/%s/%s.%s", s1, s2, md5, ext)
-			} else {
-				imageURL = fmt.Sprintf("https://cdn.donmai.us/sample/%s/%s/sample-%s.jpg", s1, s2, md5)
-			}
+			imageURL = fmt.Sprintf("https://cdn.donmai.us/original/%s/%s/%s.%s", s1, s2, md5, ext)
 		}
 		if previewURL == "" {
 			previewURL = fmt.Sprintf("https://cdn.donmai.us/180x180/%s/%s/%s.jpg", s1, s2, md5)
@@ -152,9 +129,6 @@ func extractDanbooruURLs(raw M) (string, string) {
 	}
 	if previewURL == "" {
 		previewURL = imageURL
-	}
-	if imageURL == "" {
-		imageURL = previewURL
 	}
 	return wrapProxiedURL(imageURL), wrapProxiedURL(previewURL)
 }

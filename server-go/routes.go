@@ -241,7 +241,11 @@ func (s *server) postRoutes(mux *http.ServeMux) {
 				}
 				want = cur["isBookmarked"] != true
 			}
-			post, err = setBookmark(s.db, pid, id, want)
+			if !want && b["family"] == true {
+				post, err = removeFamilyBookmarks(s.db, pid, id)
+			} else {
+				post, err = setBookmark(s.db, pid, id, want)
+			}
 			if err == nil && post == nil && want {
 				if str(getProfileSettings(s.db, pid)["dataSource"]) != "sqlite" {
 					post, err = rememberPostForBookmark(r.Context(), s.db, s.marketURL, pid, id)
@@ -522,6 +526,7 @@ func (s *server) applyBookmarkState(posts []M, pid string) []M {
 		for k, v := range p {
 			n[k] = v
 		}
+		n["originalUrl"] = firstNonEmpty(str(p["originalUrl"]), str(p["imageUrl"]))
 		n["isBookmarked"] = local["isBookmarked"] == true
 		if u := str(local["imageUrl"]); u != "" {
 			n["imageUrl"] = u
@@ -533,6 +538,7 @@ func (s *server) applyBookmarkState(posts []M, pid string) []M {
 }
 
 func (s *server) danbooruRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/danbooru/posts/{id}/family", s.danbooruFamilyHandler)
 	atoi := func(v string, d int) int {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n

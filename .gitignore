@@ -7,6 +7,9 @@ server-go/data/
 # 日志
 logs/
 
+# 前端依赖与缓存
+node_modules/
+
 # 构建产物
 *.exe
 *.test
