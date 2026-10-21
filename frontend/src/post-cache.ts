@@ -48,7 +48,10 @@ export function readPostDetailCache(key: string, storage?: StorageAccess): PostD
 export function removePostCache(key: string, storage?: StorageAccess): void {
   try {
     const target = storage ?? localStorage;
-    const entries = JSON.parse(target.getItem(STORAGE_KEY) || '{}');
+    const raw = target.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw);
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries) || !(key in entries)) return;
     delete entries[key];
     target.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch {
@@ -76,17 +79,19 @@ export function writePostCache(key: string, data: PostsResponse, storage?: Stora
     }
     const now = Date.now();
     entries[key] = { savedAt: now, data };
-    const keys = Object.keys(entries).filter(item => item !== key)
+    const olderKeys = Object.keys(entries).filter(item => item !== key)
       .sort((a, b) => (entries[a]?.savedAt || 0) - (entries[b]?.savedAt || 0));
-    for (const item of keys) {
+    for (const item of olderKeys) {
       if (!entries[item]?.savedAt || now - entries[item].savedAt > MAX_AGE) delete entries[item];
     }
-    let serialized = JSON.stringify(entries);
-    for (const item of keys) {
-      if (Object.keys(entries).length <= MAX_ENTRIES && serialized.length * 2 <= MAX_SIZE) break;
+    const remainingOlderKeys = olderKeys.filter(item => item in entries);
+    let count = Object.keys(entries).length;
+    for (const item of remainingOlderKeys) {
+      if (count <= MAX_ENTRIES) break;
       delete entries[item];
-      serialized = JSON.stringify(entries);
+      count--;
     }
+    const serialized = JSON.stringify(entries);
     // shortcut: 单条结果超过 2 MiB 时仅留在页面内存，需大量离线帖子时改用 IndexedDB。
     if (serialized.length * 2 <= MAX_SIZE) target.setItem(STORAGE_KEY, serialized);
   } catch {

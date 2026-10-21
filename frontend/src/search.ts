@@ -8,7 +8,8 @@ export function normalizeTagQuery(value: string): string {
 }
 
 export function searchCacheKey(query: string): string {
-  return query ? `feed:default:tags:${query}` : 'feed:default';
+  const normalized = normalizeTagQuery((query || '').slice(0, SEARCH_MAX_LENGTH));
+  return normalized ? `feed:default:tags:${normalized}` : 'feed:default';
 }
 
 export function readSearchHistory(storage?: HistoryStorage): string[] {

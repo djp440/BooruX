@@ -70,6 +70,42 @@ describe('帖子流', () => {
     expect(postSource('local-import')).toEqual({ label: 'local-import' });
   });
 
+  test('媒体防伪正则收紧：过滤 Safebooru 样本/缩略图、Danbooru 预览与 sample_/thumbnail_ 低清图', () => {
+    const item = post('danbooru-1');
+    expect(originalMediaURL({ ...item, imageUrl: 'https://safebooru.org/samples/12/sample_12.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: 'https://safebooru.org/thumbnails/12/thumbnail_12.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=https%3A%2F%2Fsafebooru.org%2Fsamples%2F12.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=https%3A%2F%2Fsafebooru.org%2Fthumbnails%2F12.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: 'https://cdn.donmai.us/preview/12/34/12345.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=https%3A%2F%2Fcdn.donmai.us%2Fpreview%2F12%2F34%2F12345.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: 'https://example.com/images/sample_foo.jpg' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: 'https://example.com/images/thumbnail_bar.png' })).toBe('');
+  });
+
+  test('协议相对路径解析与非法协议（data:, file:, javascript:）阻断', () => {
+    const item = post('danbooru-1');
+    expect(originalMediaURL({ ...item, imageUrl: '//cdn.donmai.us/original/a.png' })).toBe('https://cdn.donmai.us/original/a.png');
+    expect(originalMediaURL({ ...item, imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: 'file:///etc/passwd' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=javascript%3Aalert(1)' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=data%3Aimage%2Fpng%3Bbase64%2C123' })).toBe('');
+    expect(originalMediaURL({ ...item, imageUrl: '/api/media?url=file%3A%2F%2F%2Fetc%2Fpasswd' })).toBe('');
+    // originalUrl 损坏或低清时可降级到 imageUrl
+    expect(originalMediaURL({ ...item, originalUrl: 'https://safebooru.org/samples/1.jpg', imageUrl: 'https://safebooru.org/images/1.jpg' })).toBe('https://safebooru.org/images/1.jpg');
+  });
+
+  test('fetchPosts 安全捕获非 JSON 响应（502/504 HTML），包装为语义化错误附带状态码', async () => {
+    const html502 = new Response('<html><body>502 Bad Gateway</body></html>', { status: 502, headers: { 'Content-Type': 'text/html' } });
+    const request = spyOn(globalThis, 'fetch').mockResolvedValue(html502);
+    try {
+      await expect(fetchPosts('/api/danbooru/posts', new AbortController().signal)).rejects.toThrow(/服务响应异常.*502|502.*服务响应异常/);
+      request.mockResolvedValue(new Response('Gateway Timeout', { status: 504, headers: { 'Content-Type': 'text/plain' } }));
+      await expect(fetchPosts('/api/danbooru/posts', new AbortController().signal)).rejects.toThrow(/504/);
+    } finally {
+      request.mockRestore();
+    }
+  });
+
   test('GIF 与视频也保留原文件地址', () => {
     expect(originalMediaURL({ ...post('danbooru-1'), imageUrl: '/api/media?url=https%3A%2F%2Fcdn.donmai.us%2Foriginal%2Fa.gif' })).toContain('a.gif');
     expect(originalMediaURL({ ...post('danbooru-1'), mediaType: 'video', imageUrl: 'https://cdn.donmai.us/original/a.webm' })).toContain('a.webm');

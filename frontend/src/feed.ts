@@ -21,7 +21,14 @@ export type PostsResponse = {
 
 export async function fetchPosts(path: string, signal: AbortSignal, field: 'posts' | 'bookmarks' = 'posts'): Promise<PostsResponse> {
   const response = await fetch(path, { signal });
-  const { bookmarks, ...data }: PostsResponse & { bookmarks?: Post[] } = await response.json();
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch {
+    const statusMsg = response.status ? ` (HTTP ${response.status})` : '';
+    throw new Error(`服务响应异常${statusMsg}，请稍后重试`);
+  }
+  const { bookmarks, ...data }: PostsResponse & { bookmarks?: Post[] } = (raw && typeof raw === 'object') ? raw as any : {};
   const posts = field === 'bookmarks' ? bookmarks : data.posts;
   if (!response.ok || !data.success || !Array.isArray(posts)) {
     throw new Error(data.error || '帖子加载失败，请稍后重试');
@@ -35,7 +42,13 @@ export async function setPostBookmark(id: string, bookmarked: boolean): Promise<
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ bookmarked, family: !bookmarked }),
   });
-  const data = await response.json();
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    const statusMsg = response.status ? ` (HTTP ${response.status})` : '';
+    throw new Error(`服务响应异常${statusMsg}，请稍后重试`);
+  }
   if (!response.ok || !data.success || data.post?.id !== id || data.post.isBookmarked !== bookmarked) {
     throw new Error(data.error || '收藏操作失败，请重试');
   }
@@ -71,16 +84,38 @@ export function postSource(id: string): { label: string; href?: string } {
   return { label: id };
 }
 
+const LOW_RES_MEDIA = /\/(samples?|preview|thumbnails?|\d+x\d+)\/|sample_|thumbnail_|\/(sample|thumbnail)[_-]/i;
+
 export function originalMediaURL(post: Post): string {
-  const value = post.originalUrl || post.imageUrl;
-  if (!value) return '';
-  try {
-    const parsed = new URL(value, 'http://localhost');
-    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
-    const upstream = new URL(parsed.searchParams.get('url') || parsed.href);
-    if (/\/(sample|\d+x\d+)\//.test(upstream.pathname) || parsed.pathname.startsWith('/api/media/cache/')) return '';
-    return value;
-  } catch {
-    return '';
+  const candidates = [post.originalUrl, post.imageUrl].filter((item): item is string => typeof item === 'string' && item.length > 0);
+  const defaultProtocol = typeof window !== 'undefined' && window.location?.protocol && ['http:', 'https:'].includes(window.location.protocol)
+    ? window.location.protocol
+    : 'https:';
+
+  for (const rawValue of candidates) {
+    try {
+      const value = rawValue.startsWith('//') ? `${defaultProtocol}${rawValue}` : rawValue;
+      const parsed = new URL(value, `${defaultProtocol}//localhost`);
+      if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+
+      const rawUpstream = parsed.searchParams.get('url');
+      let upstream: URL;
+      if (rawUpstream) {
+        const normalizedUpstream = rawUpstream.startsWith('//') ? `${defaultProtocol}${rawUpstream}` : rawUpstream;
+        upstream = new URL(normalizedUpstream, parsed.href);
+        if (!['http:', 'https:'].includes(upstream.protocol)) continue;
+      } else {
+        upstream = parsed;
+      }
+
+      if (LOW_RES_MEDIA.test(upstream.pathname) || LOW_RES_MEDIA.test(parsed.pathname) || parsed.pathname.startsWith('/api/media/cache/')) {
+        continue;
+      }
+
+      return value;
+    } catch {
+      continue;
+    }
   }
+  return '';
 }
