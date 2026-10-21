@@ -1,5 +1,10 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
+## 2026-10-21 23:51 工单实施与代码审查闭环经验沉淀（#9 ~ #16）
+- **React 状态更新器纯度（State Updater Purity）**：严禁在 `setFeed(current => ...)` 等状态计算闭包中执行 `localStorage` 写盘（如 `writePostCache`）或直接修改外部 Session 对象。React 19 并发渲染与严格模式下更新器会被多次调用，副作用必须在异步业务回调中计算并在调用 `setState(updated)` 前后执行。
+- **元素禁用时的焦点跌落防御（Focus Blur on Disabled）**：当表单重置或点击“取消更改”导致提交/保存按钮因为未修改而立即变为 `disabled` 时，若直接 `submitRef.focus()`，浏览器会将焦点强制 blur 并跌落至 `document.body`。应主动将焦点转移至当前已选中的单选卡片/输入框等可用控件上，保持键盘焦点连续性。
+- **持久化缓存按体积淘汰策略**：在实现单次 `JSON.stringify` 性能优化的同时，对于 `MAX_SIZE` (2 MiB) 超限情况，应先在内存中按时间戳升序循环逐出最旧条目直到新体积容纳，仅当单项自身体积超限时才安全放弃写入，避免多项累积时静默丢弃整个新缓存。
+
 ## 2026-10-21 22:35 布局、视觉与 HCI 专项工单化决策
 - **画布与卡片表面解耦（Canvas vs Surface）**：确定引入 `--canvas` 变量（浅色 `#f8f9fa`，深色 `#111215`），`--surface` 仅用于卡片与导航等抬升表面（浅色 `#fff`，深色 `#18191d`），配合 `--card-shadow` 微阴影构建类 Apple Photos / GitHub 的精致实体卡片质感。
 - **移动端 Viewport 根契约**：`index.html` 必须显式声明 `<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />`，否则 iOS Safari 下 `env(safe-area-inset-*)` 强制返回 0px 导致底部 Home Indicator 遮挡导航。
