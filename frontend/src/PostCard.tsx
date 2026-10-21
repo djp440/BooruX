@@ -4,6 +4,37 @@ import type { Post } from './feed';
 import { isFresh, readPostCache, writePostCache } from './post-cache';
 import { useBookmarks } from './Bookmarks';
 
+export function canOpenCard(
+  target: unknown,
+  currentTarget: { contains: (node: Node | null) => boolean },
+  detail: number,
+  pointerStart: { x: number; y: number } | null,
+  currentPointer?: { x: number; y: number } | null,
+  selection?: { isCollapsed?: boolean; toString: () => string; anchorNode: Node | null } | null,
+  hasOpenHandler = true
+): boolean {
+  if (!hasOpenHandler) return false;
+  if (!target || typeof (target as any).closest !== 'function') return false;
+  const element = target as Element;
+  if (element.closest('a, button, video, .post-media-track, .post-actions, .post-meta, .post-notice')) {
+    return false;
+  }
+  if (
+    selection &&
+    !selection.isCollapsed &&
+    selection.toString().length > 0 &&
+    selection.anchorNode &&
+    currentTarget.contains(selection.anchorNode)
+  ) {
+    return false;
+  }
+  if (detail > 0 && pointerStart && currentPointer) {
+    const distance = Math.hypot(currentPointer.x - pointerStart.x, currentPointer.y - pointerStart.y);
+    if (distance > 8) return false;
+  }
+  return true;
+}
+
 function Media({ post }: { post: Post }) {
   const [failed, setFailed] = useState(false);
   const src = originalMediaURL(post);
@@ -16,12 +47,12 @@ function Media({ post }: { post: Post }) {
         <div className="media-message" role="status">
           <p>媒体加载失败</p>
           <button onClick={() => setFailed(false)}>重试</button>
-          <a href={src} target="_blank" rel="noreferrer">打开原文件</a>
+          <a href={src} target="_blank" rel="noreferrer noopener">打开原文件</a>
         </div>
       ) : post.mediaType === 'video' ? (
         <video src={src} controls playsInline preload="none" aria-label={label} onError={() => setFailed(true)} />
       ) : (
-        <a className="media-original" href={src} target="_blank" rel="noreferrer" aria-label={`打开原图：${label}`}>
+        <a className="media-original" href={src} target="_blank" rel="noreferrer noopener" aria-label={`打开原图：${label}`}>
           <img src={src} alt={label} loading="lazy" decoding="async" onError={() => setFailed(true)} />
         </a>
       )}
@@ -66,15 +97,52 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   const source = postSource(posts[0].id);
 
   return (
-    <article className="post-card" data-post-group={id} aria-label={`帖子 ${id}`}
-      onPointerDown={event => { pointer.current = { x: event.clientX, y: event.clientY }; }}
+    <article
+      className="post-card"
+      data-post-group={id}
+      aria-label={`帖子 ${id}`}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={event => {
+        if (!onOpen) return;
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      onPointerDown={event => {
+        if (event.button === 0) {
+          if (event.target instanceof Element && event.target.closest('a, button, video, .post-media-track, .post-actions, .post-meta')) return;
+          pointer.current = { x: event.clientX, y: event.clientY };
+        }
+      }}
+      onPointerCancel={() => {
+        pointer.current = null;
+      }}
       onClick={event => {
-        if (!onOpen || !(event.target instanceof Element) || event.target.closest('a, button, video, .post-media-track') || window.getSelection()?.toString()) return;
-        if (pointer.current && Math.hypot(event.clientX - pointer.current.x, event.clientY - pointer.current.y) > 6) return;
-        onOpen();
-      }}>
-      <header className="post-meta">
-        <a href={source.href} target="_blank" rel="noreferrer">{source.label}</a>
+        const start = pointer.current;
+        pointer.current = null;
+        const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+        if (
+          canOpenCard(
+            event.target,
+            event.currentTarget,
+            event.detail,
+            start,
+            { x: event.clientX, y: event.clientY },
+            selection,
+            Boolean(onOpen)
+          )
+        ) {
+          onOpen?.();
+        }
+      }}
+    >
+      <header className="post-meta" onClick={event => event.stopPropagation()}>
+        {source.href ? (
+          <a href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
+        ) : (
+          <span>{source.label}</span>
+        )}
         <span>{posts.length} 个媒体</span>
         {onOpen && <button className="detail-entry" onClick={onOpen}>查看详情</button>}
       </header>
@@ -86,10 +154,15 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
         <p className="post-notice" role="alert">{related.length ? '关联媒体更新失败，正在显示已缓存内容。' : '关联媒体加载失败，当前展示不完整。'}<button onClick={() => setAttempt(value => value + 1)}>重试</button></p>
       )}
       {cached && <p className="post-notice">仅显示本地缓存，关联媒体可能不完整。</p>}
-      <div className="post-media-track" tabIndex={0} role="region" aria-label={`帖子媒体，共 ${posts.length} 项，可横向滚动`}>
+      <div
+        className="post-media-track"
+        tabIndex={posts.length > 1 ? 0 : -1}
+        role="region"
+        aria-label={posts.length > 1 ? `帖子媒体，共 ${posts.length} 项，可横向滚动` : '帖子媒体'}
+      >
         {posts.map(post => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} />)}
       </div>
-      <footer className="post-actions">
+      <footer className="post-actions" onClick={event => event.stopPropagation()}>
         <button
           className="bookmark-button"
           aria-label={bookmarked ? '取消收藏' : '收藏'}
@@ -114,4 +187,3 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
     </article>
   );
 }
-

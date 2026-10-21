@@ -185,6 +185,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
 }
 
 .post-meta {
@@ -212,6 +214,8 @@ body {
   min-height: 0;
   max-height: 140px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 6px 14px 14px;
   font-size: 12px;
   line-height: 1.5;
@@ -229,12 +233,17 @@ body {
   display: flex;
   flex: none;
   gap: 8px;
-  height: clamp(240px, 50dvh, 560px);
+  height: clamp(240px, 50svh, 560px);
   margin-top: auto;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
   background: var(--media-bg);
+}
+
+.post-media-track::-webkit-scrollbar {
+  display: none;
 }
 
 .post-media {
@@ -245,7 +254,7 @@ body {
   min-width: 0;
   height: 100%;
   margin: 0;
-  scroll-snap-align: start;
+  scroll-snap-align: center;
 }
 
 .post-media-track:has(> :nth-child(2)) .post-media {
@@ -266,6 +275,11 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  user-select: none;
+}
+
+.post-media img {
+  -webkit-user-drag: none;
 }
 
 .media-message {
@@ -337,6 +351,10 @@ body {
   stroke-linejoin: round;
 }
 
+.post-actions .bookmark-button {
+  min-width: 82px;
+}
+
 .post-actions .bookmark-button[aria-pressed="true"] {
   color: var(--saved-text);
   background: var(--saved-bg);
@@ -344,6 +362,18 @@ body {
 
 .bookmark-button[aria-pressed="true"] svg {
   fill: currentColor;
+}
+
+@keyframes bookmark-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.26);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .post-actions button:disabled {
@@ -362,12 +392,27 @@ body {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .post-actions button:not(:disabled) {
-    transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  .post-actions button:not(:disabled),
+  .detail-entry:not(:disabled) {
+    transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
-  .post-actions button:not(:disabled):not(:focus-visible):active {
+  .post-actions button:not(:disabled):not(:focus-visible):active,
+  .detail-entry:not(:disabled):not(:focus-visible):active {
     transform: scale(0.97);
+    transition-duration: 70ms;
+  }
+
+  .post-actions .bookmark-button[aria-pressed="true"] svg {
+    animation: bookmark-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-actions button:not(:disabled):not(:focus-visible):active,
+  .detail-entry:not(:disabled):not(:focus-visible):active {
+    opacity: 0.82;
+    background: var(--subtle);
   }
 }
 
