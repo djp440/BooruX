@@ -22,7 +22,7 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<PostsResponse>(() =>
     readPostCache('favorites:default')?.data || { success: true, posts: [] });
   const snapshotRef = useRef(snapshot);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => Boolean(readPostCache('favorites:default')));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -43,6 +43,7 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
     request.current = null;
     replace({ success: true, posts: [] });
     setReady(false);
+    setLoading(true);
   }, [replace]);
 
   const refresh = useCallback((): Promise<void> => {
@@ -61,8 +62,10 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
         if (started === revision.current) setError('收藏列表加载失败，请重试。');
       })
       .finally(() => {
-        request.current = null;
-        setLoading(false);
+        if (started === revision.current) {
+          request.current = null;
+          setLoading(false);
+        }
       });
     return request.current;
   }, [replace]);

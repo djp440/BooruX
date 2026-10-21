@@ -28,7 +28,7 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
       <form role="search" aria-label="搜索帖子标签" onSubmit={event => { event.preventDefault(); search(draft); }}>
         <label htmlFor="tag-search">搜索标签</label>
         <div className="search-controls">
-          <input id="tag-search" type="search" value={draft} maxLength={SEARCH_MAX_LENGTH} autoComplete="off" autoCapitalize="none" spellCheck={false}
+          <input id="tag-search" type="search" value={draft} maxLength={SEARCH_MAX_LENGTH} autoComplete="off" autoCapitalize="none" autoCorrect="off" enterKeyHint="search" spellCheck={false}
             placeholder="例如：sky blue_hair" aria-describedby="tag-search-help" onChange={event => setDraft(event.target.value)} />
           <button type="submit" className="search-submit">搜索</button>
         </div>
@@ -40,11 +40,11 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
       </div>}
       {query && <div className="search-current"><span>搜索结果：{query}</span><button type="button" onClick={() => search('')}>显示全部</button></div>}
     </div>}
-    <FeedResults key={`${kind}:${query}`} kind={kind} query={query} />
+    <FeedResults key={`${kind}:${query}`} kind={kind} query={query} onReset={() => search('')} />
   </section>;
 }
 
-function FeedResults({ kind, query }: { kind: 'home' | 'favorites'; query: string }) {
+export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorites'; query: string; onReset?: () => void }) {
   const { page, open } = usePageSession();
   const bookmarks = useBookmarks();
   const { refresh: refreshBookmarks } = bookmarks;
@@ -68,13 +68,15 @@ function FeedResults({ kind, query }: { kind: 'home' | 'favorites'; query: strin
     fetchPosts(`/api/danbooru/posts?${params}`, controller.signal)
       .then(data => {
         if (controller.signal.aborted) return;
-        const updated: PostsResponse = {
-          ...data,
-          posts: uniquePosts(cursor ? [...feed.posts, ...data.posts] : data.posts),
-        };
-        page.feed = updated;
-        setFeed(updated);
-        writePostCache(cacheKey, updated);
+        setFeed(current => {
+          const updated: PostsResponse = {
+            ...data,
+            posts: uniquePosts(cursor ? [...current.posts, ...data.posts] : data.posts),
+          };
+          page.feed = updated;
+          writePostCache(cacheKey, updated);
+          return updated;
+        });
       })
       .catch(() => {
         if (!controller.signal.aborted) setError('帖子加载失败，请检查网络或服务后重试。');
@@ -107,8 +109,12 @@ function FeedResults({ kind, query }: { kind: 'home' | 'favorites'; query: strin
         {bookmarks.action && !bookmarks.action.error && <p role="status">{bookmarks.action.message}</p>}
         {displayedLoading && <p role="status">{groups.length ? '正在更新帖子…' : '正在加载帖子…'}</p>}
         {displayedError && <><p role="alert">{groups.length ? '帖子更新失败，正在显示已缓存内容。' : displayedError}</p><button onClick={retry}>重试</button></>}
-        {!displayedLoading && !displayedError && !groups.length && <p>{kind === 'home' ? query ? '没有匹配这些标签的帖子，请修改标签或显示全部。' : '暂无可展示的 Danbooru 帖子。' : '暂无收藏的帖子。'}</p>}
-        {!displayedLoading && !displayedError && nextCursor && <button onClick={() => setCursor(nextCursor)}>加载更多</button>}
+        {!displayedLoading && !displayedError && !groups.length && (kind === 'home' && query ? (
+          <><p>没有匹配这些标签的帖子，请修改标签或显示全部。</p>{onReset && <button type="button" onClick={onReset}>显示全部</button>}</>
+        ) : (
+          <p>{kind === 'home' ? '暂无可展示的 Danbooru 帖子。' : '暂无收藏的帖子。'}</p>
+        ))}
+        {!displayedError && nextCursor && <button disabled={displayedLoading} aria-busy={displayedLoading} onClick={() => setCursor(nextCursor)}>加载更多</button>}
         {!displayedLoading && !displayedError && groups.length > 0 && !nextCursor && <p>已加载全部帖子</p>}
       </div>
     </div>
