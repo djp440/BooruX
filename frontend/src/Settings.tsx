@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RATING_OPTIONS, THEME_OPTIONS, applyTheme, fetchSettings, saveSettings } from './rating-settings';
 import type { Rating, Theme } from './rating-settings';
 import { usePageSession } from './page-session';
@@ -14,14 +14,31 @@ export default function Settings() {
   const [themeDraft, setThemeDraft] = useState<Theme>('system');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState('');
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [retrySave, setRetrySave] = useState<(() => void) | null>(null);
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
+
+  const themeSubmitRef = useRef<HTMLButtonElement>(null);
+  const ratingSubmitRef = useRef<HTMLButtonElement>(null);
+  const savedThemeRef = useRef(theme);
+
+  useEffect(() => {
+    savedThemeRef.current = theme;
+  }, [theme]);
+
+  // 用户未保存离开设置页时（组件卸载），自动回滚 DOM 外观至已保存的主题
+  useEffect(() => {
+    return () => {
+      applyTheme(savedThemeRef.current, false);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setError('');
+    setLoadError('');
     fetchSettings(controller.signal)
       .then(value => {
         if (controller.signal.aborted) return;
@@ -29,10 +46,11 @@ export default function Settings() {
         setDraft(value.rating);
         setTheme(value.themeMode);
         setThemeDraft(value.themeMode);
-        applyTheme(value.themeMode);
+        savedThemeRef.current = value.themeMode;
+        applyTheme(value.themeMode, true);
       })
       .catch(value => {
-        if (!controller.signal.aborted) setError(value instanceof Error ? value.message : '设置加载失败，请重试');
+        if (!controller.signal.aborted) setLoadError(value instanceof Error ? value.message : '设置加载失败，请重试');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -42,7 +60,7 @@ export default function Settings() {
 
   const saveRating = async () => {
     setSaving('rating');
-    setError('');
+    setSaveError('');
     setNotice('');
     try {
       await saveSettings({ rating: draft });
@@ -52,9 +70,11 @@ export default function Settings() {
       clearBookmarks();
       clearPostsCache();
       setNotice('年龄分级已保存；返回首页或收藏时将按新分级重新加载。');
-      setSaving('');
+      setRetrySave(null);
     } catch (value) {
-      setError(value instanceof Error ? value.message : '年龄分级保存失败，请重试');
+      setSaveError(value instanceof Error ? value.message : '年龄分级保存失败，请重试');
+      setRetrySave(() => () => void saveRating());
+    } finally {
       setSaving('');
     }
   };
@@ -62,17 +82,20 @@ export default function Settings() {
   const saveTheme = async () => {
     const previous = theme;
     setSaving('theme');
-    setError('');
+    setSaveError('');
     setNotice('');
-    applyTheme(themeDraft);
     try {
       await saveSettings({ themeMode: themeDraft });
       setTheme(themeDraft);
+      savedThemeRef.current = themeDraft;
+      applyTheme(themeDraft, true);
       setNotice('背景色已保存。');
+      setRetrySave(null);
     } catch (value) {
-      applyTheme(previous);
+      applyTheme(previous, false);
       setThemeDraft(previous);
-      setError(value instanceof Error ? value.message : '背景色保存失败，请重试');
+      setSaveError(value instanceof Error ? value.message : '背景色保存失败，请重试');
+      setRetrySave(() => () => void saveTheme());
     } finally {
       setSaving('');
     }
@@ -80,7 +103,8 @@ export default function Settings() {
 
   return <section className="settings" aria-label="设置">
     <h1>设置</h1>
-    {error && <p className="setting-error" role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>}
+    {loadError && <p className="setting-error" role="alert">{loadError}<button type="button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>}
+    {saveError && <p className="setting-error" role="alert">{saveError}{retrySave && <button type="button" onClick={retrySave}>重试</button>}</p>}
     {notice && <p className="setting-notice" role="status">{notice}</p>}
     {loading ? <p role="status">正在加载设置…</p> : <>
       <form className="setting-item" aria-labelledby="theme-heading" onSubmit={event => { event.preventDefault(); void saveTheme(); }}>
@@ -91,13 +115,13 @@ export default function Settings() {
         <fieldset disabled={saving === 'theme'}>
           <legend className="visually-hidden">选择背景色</legend>
           {THEME_OPTIONS.map(option => <label key={option.value} className="rating-option">
-            <input type="radio" name="themeMode" value={option.value} checked={themeDraft === option.value} onChange={() => { setThemeDraft(option.value); applyTheme(option.value); setNotice(''); }} />
+            <input type="radio" name="themeMode" value={option.value} checked={themeDraft === option.value} onChange={() => { setThemeDraft(option.value); applyTheme(option.value, false); setNotice(''); setSaveError(''); setRetrySave(null); }} />
             <span><strong>{option.label}</strong><small>{option.description}</small></span>
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button type="submit" className="primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
-          {themeDraft !== theme && <button type="button" disabled={saving !== ''} onClick={() => { setThemeDraft(theme); applyTheme(theme); setError(''); setNotice(''); }}>取消更改</button>}
+          <button ref={themeSubmitRef} type="submit" className="primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
+          {themeDraft !== theme && <button type="button" disabled={saving !== ''} onClick={() => { setThemeDraft(theme); applyTheme(theme, false); setSaveError(''); setRetrySave(null); setNotice(''); themeSubmitRef.current?.focus(); }}>取消更改</button>}
         </div>
       </form>
       <form className="setting-item" aria-labelledby="rating-heading" onSubmit={event => { event.preventDefault(); void saveRating(); }}>
@@ -108,13 +132,13 @@ export default function Settings() {
         <fieldset disabled={saving === 'rating'}>
           <legend className="visually-hidden">选择年龄分级</legend>
           {RATING_OPTIONS.map(option => <label key={option.value} className="rating-option">
-            <input type="radio" name="rating" value={option.value} checked={draft === option.value} onChange={() => { setDraft(option.value); setNotice(''); }} />
+            <input type="radio" name="rating" value={option.value} checked={draft === option.value} onChange={() => { setDraft(option.value); setNotice(''); setSaveError(''); setRetrySave(null); }} />
             <span><strong>{option.label}</strong><small>{option.description}</small></span>
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button type="submit" className="primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
-          {draft !== rating && <button type="button" disabled={saving !== ''} onClick={() => { setDraft(rating); setError(''); setNotice(''); }}>取消更改</button>}
+          <button ref={ratingSubmitRef} type="submit" className="primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
+          {draft !== rating && <button type="button" disabled={saving !== ''} onClick={() => { setDraft(rating); setSaveError(''); setRetrySave(null); setNotice(''); ratingSubmitRef.current?.focus(); }}>取消更改</button>}
         </div>
       </form>
     </>}

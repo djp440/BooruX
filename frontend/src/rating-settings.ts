@@ -55,14 +55,16 @@ export async function saveSettings(settings: Partial<SettingsData>): Promise<voi
 
 export const THEME_STORAGE_KEY = 'boorux:theme';
 
-export function applyTheme(theme: Theme): void {
+export function applyTheme(theme: Theme, persist: boolean = true): void {
   const root = document.documentElement;
   if (theme === 'system') root.removeAttribute('data-theme');
   else root.dataset.theme = theme;
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // 存储不可用时仍应用当前页面主题。
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // 存储不可用时仍应用当前页面主题。
+    }
   }
 }
 

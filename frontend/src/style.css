@@ -13,7 +13,7 @@
   --control-border: #d1d5db;
   --subtle: #f3f4f6;
   --media-bg: #f7f7f8;
-  --selected-bg: #f9fafb;
+  --selected-bg: #f3f4f6;
   --saved-bg: #fef9c3;
   --saved-text: #a16207;
   --focus: #2563eb;
@@ -412,7 +412,7 @@ body {
 .setting-item p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted-strong); }
 .setting-item fieldset { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
 .rating-option { display: flex; gap: 10px; align-items: flex-start; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-.rating-option:has(input:checked) { border-color: var(--disabled); background: var(--selected-bg); }
+.rating-option:has(input:checked) { border-color: var(--text); background: var(--selected-bg); }
 .rating-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rating-option input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--text); }
 .rating-option span { display: grid; gap: 2px; }
