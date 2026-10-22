@@ -23,7 +23,7 @@ export function BookmarkProvider({ children }: { children: ReactNode }) {
     readPostCache('favorites:default')?.data || { success: true, posts: [] });
   const snapshotRef = useRef(snapshot);
   const [ready, setReady] = useState(() => Boolean(readPostCache('favorites:default')));
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readPostCache('favorites:default'));
   const [error, setError] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [action, setAction] = useState<BookmarkState['action']>(null);

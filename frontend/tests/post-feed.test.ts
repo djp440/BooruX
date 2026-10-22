@@ -114,4 +114,34 @@ describe('PostFeed 焦点连续性与软键盘体验', () => {
       env.restore();
     }
   });
+
+  test('收藏列表为空时展示引导说明与“去首页浏览”CTA按钮，避免空状态死胡同', () => {
+    const env = setupStorage();
+    try {
+      writePostCache('favorites:default', {
+        success: true,
+        posts: [],
+      });
+
+      const html = renderToStaticMarkup(
+        React.createElement(MemoryRouter, null,
+          React.createElement(PageSessionProvider, null,
+            React.createElement(BookmarkProvider, null,
+              React.createElement(FeedResults, {
+                kind: 'favorites',
+                query: '',
+              })
+            )
+          )
+        )
+      );
+
+      expect(html).toContain('暂无收藏的帖子。');
+      expect(html).toContain('在首页浏览帖子时，点击卡片底部的收藏按钮即可将喜欢的作品保存在这里。');
+      expect(html).toContain('去首页浏览');
+      expect(html).toMatch(/<button[^>]*>去首页浏览<\/button>/);
+    } finally {
+      env.restore();
+    }
+  });
 });

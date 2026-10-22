@@ -1,6 +1,9 @@
 export type Post = {
   id: string;
   title: string;
+  artist?: string;
+  createdAt?: string;
+  aspectRatio?: number;
   imageUrl: string;
   originalUrl?: string;
   mediaType: string;

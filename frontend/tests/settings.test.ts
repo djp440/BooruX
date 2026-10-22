@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import React, { act } from 'react';
 import { RATING_OPTIONS, THEME_OPTIONS, THEME_STORAGE_KEY, applyTheme, isRating, isTheme, readCachedTheme } from '../src/rating-settings';
@@ -463,5 +464,16 @@ describe('设置页背景色', () => {
       Object.defineProperty(globalThis, 'window', { configurable: true, value: origWindow });
       Object.defineProperty(globalThis, 'document', { configurable: true, value: origDoc });
     }
+  });
+
+  test('Refactoring UI 规范：.settings 约束 max-width: 600px 且提示框胶囊化', () => {
+    const cssPath = resolve(__dirname, '../src/style.css');
+    const css = readFileSync(cssPath, 'utf-8');
+
+    // 表单宽度限制为 600px
+    expect(css).toMatch(/\.settings\s*\{[^}]*max-width:\s*600px;/);
+    // 提示条胶囊背景与内边距
+    expect(css).toMatch(/\.setting-notice[^{]*\{[^}]*background:\s*var\(--subtle\);/);
+    expect(css).toMatch(/\.setting-error[^{]*\{[^}]*background:\s*var\(--subtle\);/);
   });
 });

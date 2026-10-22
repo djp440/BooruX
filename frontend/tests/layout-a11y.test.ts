@@ -29,9 +29,13 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
       // 旧 15% 边距已被废弃
       expect(css).not.toContain('padding: 0 15%;');
     });
+
+    test('桌面端 768px 栅格留白对称性：.feed 在宽屏下配置 padding-left: 24px 与 padding-right: 8px 保证两端留白均等', () => {
+      expect(css).toMatch(/@media\s*\(min-width:\s*768px\)[\s\S]*?\.feed\s*\{[^}]*padding:\s*0 8px 0 24px;/);
+    });
   });
 
-  describe('2. 画布与表面解耦 (Canvas vs Surface) 与微阴影', () => {
+  describe('2. 画布与表面解耦及平面时间线', () => {
     test('定义 --canvas 与 --surface 语义色并区分抬升表面', () => {
       // 浅色模式
       expect(css).toMatch(/--canvas:\s*#f8f9fa;/);
@@ -46,9 +50,14 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
       // body 背景使用 var(--canvas)
       expect(css).toMatch(/body\s*\{[^}]*background:\s*var\(--canvas\);/);
 
-      // 卡片引入 var(--surface) 与 var(--card-shadow)
+      // 时间线使用统一表面和细分隔线，不再使用浮起卡片。
       expect(css).toMatch(/\.post-card\s*\{[^}]*background:\s*var\(--surface\);/);
-      expect(css).toMatch(/\.post-card\s*\{[^}]*box-shadow:\s*var\(--card-shadow\);/);
+      expect(css).toMatch(/\.post-card\s*\{[^}]*border-bottom:\s*1px solid var\(--border\);/);
+      expect(css).not.toMatch(/\.post-card\s*\{[^}]*(box-shadow|max-height):/);
+      expect(css).toMatch(/\.post-card\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,\s*1fr\);/);
+      expect(css).toMatch(/@media\s*\(max-width:\s*479px\)[\s\S]*?\.post-card\s*\{[^}]*grid-template-columns:\s*36px minmax\(0,\s*1fr\);/);
+      expect(css).toMatch(/\.post-tag\s*\{[^}]*color:\s*var\(--accent\);/);
+      expect(css).toMatch(/\.post-media-track\s*\{[^}]*border-radius:\s*8px;/);
     });
   });
 
@@ -131,9 +140,13 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
       expect(css).toMatch(/\.detail-entry::after\s*\{[^}]*min-width:\s*44px;\s*min-height:\s*44px;/);
     });
 
-    test('标签池与搜索历史应用 scrollbar-width: thin', () => {
-      expect(css).toMatch(/\.post-tags\s*\{[^}]*scrollbar-width:\s*thin;/);
+    test('搜索历史保留细滚动条，标签不使用独立滚动条', () => {
+      expect(css).not.toMatch(/\.post-tags\s*\{[^}]*scrollbar-width:/);
       expect(css).toMatch(/\.search-history\s+ul\s*\{[^}]*scrollbar-width:\s*thin;/);
+    });
+
+    test('Refactoring UI 规范：搜索历史 Chip 紧凑化 (min-height: 28px)', () => {
+      expect(css).toMatch(/\.search-history\s+li\s+button\s*\{[^}]*min-height:\s*28px;/);
     });
   });
 

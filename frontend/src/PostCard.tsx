@@ -95,6 +95,13 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   posts.sort((a, b) => a.id === id ? -1 : b.id === id ? 1 : 0);
   const tags = [...new Map(posts.flatMap(post => post.tags || []).map(tag => [tag.name, tag])).values()];
   const source = postSource(posts[0].id);
+  const primary = posts[0];
+  const artist = typeof primary.artist === 'string' ? primary.artist.trim() : '';
+  const author = artist && !/^unknown(?:[ _]artist)?$/i.test(artist) ? artist.replaceAll('_', ' ') : '未知作者';
+  const title = typeof primary.title === 'string' ? primary.title.trim() : '';
+  const createdAt = typeof primary.createdAt === 'string' && primary.createdAt ? new Date(primary.createdAt) : null;
+  const date = createdAt && Number.isFinite(createdAt.getTime()) ? createdAt : null;
+  const aspectRatio = primary.aspectRatio && Number.isFinite(primary.aspectRatio) && primary.aspectRatio > 0 ? primary.aspectRatio : undefined;
 
   return (
     <article
@@ -137,53 +144,63 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
         }
       }}
     >
-      <header className="post-meta" onClick={event => event.stopPropagation()}>
-        {source.href ? (
-          <a href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
-        ) : (
-          <span>{source.label}</span>
+      <div className="post-avatar" aria-hidden="true">{author === '未知作者' ? '?' : Array.from(author)[0]}</div>
+      <div className="post-content">
+        <header className="post-meta" onClick={event => event.stopPropagation()}>
+          <div className="post-meta-primary">
+            <strong className="post-author">{author}</strong>
+            {source.href ? (
+              <a href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
+            ) : (
+              <span>{source.label}</span>
+            )}
+            {date && <><span className="post-meta-separator" aria-hidden="true">·</span><time dateTime={date.toISOString()} title={date.toLocaleString('zh-CN')}>{date.toLocaleDateString('zh-CN')}</time></>}
+          </div>
+          {onOpen && <button className="detail-entry" onClick={onOpen} aria-label="查看详情" title="查看详情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg></button>}
+        </header>
+        {title && <p className="post-body">{title}</p>}
+        <div className="post-tags" data-preview={Boolean(onOpen)} role="region" aria-label="帖子标签" title={onOpen ? '进入详情查看完整标签' : undefined}>
+          {tags.length ? tags.map(tag => <span className="post-tag" key={tag.name}>{`#${tag.name} `}</span>) : <span>暂无标签</span>}
+        </div>
+        {needsFamily && status === 'loading' && !related.length && <p className="post-notice" role="status">正在加载关联媒体…</p>}
+        {needsFamily && status === 'error' && (
+          <p className="post-notice" role="alert">{related.length ? '关联媒体更新失败，正在显示已缓存内容。' : '关联媒体加载失败，当前展示不完整。'}<button onClick={() => setAttempt(value => value + 1)}>重试</button></p>
         )}
-        <span>{posts.length} 个媒体</span>
-        {onOpen && <button className="detail-entry" onClick={onOpen}>查看详情</button>}
-      </header>
-      <div className="post-tags" tabIndex={0} aria-label="帖子标签">
-        {tags.length ? tags.map(tag => <span className="post-tag" key={tag.name}>{tag.name}</span>) : <span>暂无标签</span>}
-      </div>
-      {needsFamily && status === 'loading' && !related.length && <p className="post-notice" role="status">正在加载关联媒体…</p>}
-      {needsFamily && status === 'error' && (
-        <p className="post-notice" role="alert">{related.length ? '关联媒体更新失败，正在显示已缓存内容。' : '关联媒体加载失败，当前展示不完整。'}<button onClick={() => setAttempt(value => value + 1)}>重试</button></p>
-      )}
-      {cached && <p className="post-notice">仅显示本地缓存，关联媒体可能不完整。</p>}
-      <div
-        className="post-media-track"
-        tabIndex={posts.length > 1 ? 0 : -1}
-        role="region"
-        aria-label={posts.length > 1 ? `帖子媒体，共 ${posts.length} 项，可横向滚动` : '帖子媒体'}
-      >
-        {posts.map(post => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} />)}
-      </div>
-      <footer className="post-actions" onClick={event => event.stopPropagation()}>
-        <button
-          className="bookmark-button"
-          aria-label={bookmarked ? '取消收藏' : '收藏'}
-          aria-pressed={bookmarked}
-          aria-busy={busy}
-          disabled={!bookmarks.ready || bookmarks.pendingId !== null}
-          onClick={() => void bookmarks.toggle(id, posts)}
+        {cached && <p className="post-notice">仅显示本地缓存，关联媒体可能不完整。</p>}
+        <div
+          className="post-media-track"
+          style={{ aspectRatio }}
+          tabIndex={posts.length > 1 ? 0 : -1}
+          role="region"
+          aria-label={posts.length > 1 ? `帖子媒体，共 ${posts.length} 项，可横向滚动` : '帖子媒体'}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" /></svg>
-          <span>{busy ? '处理中…' : bookmarked ? '已收藏' : '收藏'}</span>
-        </button>
-        <button onClick={onComments} aria-label="查看评论">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" /></svg>
-          <span>评论</span>
-        </button>
-        <button disabled title="转发功能尚未开放">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" /></svg>
-          <span>转发</span>
-        </button>
-      </footer>
-      {bookmarks.action?.id === id && bookmarks.action.error && <p className="post-notice" role="alert">{bookmarks.action.message}</p>}
+          {posts.map(post => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} />)}
+        </div>
+        {posts.length > 1 && <p className="post-media-count">{posts.length} 个媒体</p>}
+        <footer className="post-actions" onClick={event => event.stopPropagation()}>
+          <button onClick={onComments} aria-label="查看评论" title="查看评论">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" /></svg>
+            <span className="visually-hidden">评论</span>
+          </button>
+          <button disabled aria-label="转发功能尚未开放" title="转发功能尚未开放">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4" /></svg>
+            <span className="visually-hidden">转发</span>
+          </button>
+          <button
+            className="bookmark-button"
+            aria-label={bookmarked ? '取消收藏' : '收藏'}
+            aria-pressed={bookmarked}
+            aria-busy={busy}
+            title={busy ? '处理中…' : bookmarked ? '取消收藏' : '收藏'}
+            disabled={!bookmarks.ready || bookmarks.pendingId !== null}
+            onClick={() => void bookmarks.toggle(id, posts)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" /></svg>
+            <span className="visually-hidden">{busy ? '处理中…' : bookmarked ? '已收藏' : '收藏'}</span>
+          </button>
+        </footer>
+        {bookmarks.action?.id === id && bookmarks.action.error && <p className="post-notice" role="alert">{bookmarks.action.message}</p>}
+      </div>
     </article>
   );
 }

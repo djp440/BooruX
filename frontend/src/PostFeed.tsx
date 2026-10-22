@@ -48,7 +48,7 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
 }
 
 export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorites'; query: string; onReset?: () => void }) {
-  const { page, open } = usePageSession();
+  const { page, open, goArea } = usePageSession();
   const bookmarks = useBookmarks();
   const { refresh: refreshBookmarks } = bookmarks;
   const cacheKey = searchCacheKey(query);
@@ -115,8 +115,14 @@ export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorite
         {displayedError && <><p role="alert">{groups.length ? '帖子更新失败，正在显示已缓存内容。' : displayedError}</p><button onClick={retry}>重试</button></>}
         {!displayedLoading && !displayedError && !groups.length && (kind === 'home' && query ? (
           <><p>没有匹配这些标签的帖子，请修改标签或显示全部。</p>{onReset && <button type="button" onClick={onReset}>显示全部</button>}</>
+        ) : kind === 'favorites' ? (
+          <div className="feed-empty-guide">
+            <p>暂无收藏的帖子。</p>
+            <p className="empty-desc">在首页浏览帖子时，点击卡片底部的收藏按钮即可将喜欢的作品保存在这里。</p>
+            <button type="button" className="empty-cta" onClick={() => goArea('home')}>去首页浏览</button>
+          </div>
         ) : (
-          <p>{kind === 'home' ? '暂无可展示的 Danbooru 帖子。' : '暂无收藏的帖子。'}</p>
+          <p>暂无可展示的 Danbooru 帖子。</p>
         ))}
         {!displayedError && nextCursor && <button disabled={displayedLoading} aria-busy={displayedLoading} onClick={() => setCursor(nextCursor)}>加载更多</button>}
         {!displayedLoading && !displayedError && groups.length > 0 && !nextCursor && <p>已加载全部帖子</p>}

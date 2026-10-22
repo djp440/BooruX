@@ -195,15 +195,114 @@ describe('卡片手势无障碍、选区精准化与外链安全加固', () => {
       );
       expect(htmlWithoutOpen).not.toContain('<article class="post-card" data-post-group="danbooru-1" aria-label="帖子 danbooru-1" tabindex="0"');
     });
+
+    test.each([true, false])('标签预览开关与详情入口一致：%s', preview => {
+      const tags = Array.from({ length: 100 }, (_, i) => ({ id: String(i), name: `tag_${i}`, category: 'general' }));
+      const html = renderToString(React.createElement(BookmarkProvider, null,
+        React.createElement(PostCard, {
+          id: 'danbooru-1', posts: [createPost('danbooru-1', { tags })], trusted: !preview,
+          onOpen: preview ? () => {} : undefined, onComments: () => {},
+        })));
+      expect(html).toContain(`class="post-tags" data-preview="${preview}" role="region"`);
+      expect(html).not.toMatch(/class="post-tags"[^>]*tabindex=/);
+      expect(html).toContain('#tag_99');
+      expect(html.includes('title="进入详情查看完整标签"')).toBe(preview);
+    });
+
+    test('X 风格：头像、正文和井号标签位于媒体前，操作栏保留禁用转发', () => {
+      const post = createPost('danbooru-1');
+      const html = renderToString(
+        React.createElement(BookmarkProvider, null,
+          React.createElement(PostCard, { id: 'danbooru-1', posts: [post], onOpen: () => {}, onComments: () => {} })
+        )
+      );
+
+      // 正文和标签先于媒体，所有标签仍完整保留。
+      const mediaIndex = html.indexOf('class="post-media-track"');
+      const tagsIndex = html.indexOf('class="post-tags"');
+      expect(mediaIndex).toBeGreaterThan(-1);
+      expect(tagsIndex).toBeGreaterThan(-1);
+      expect(tagsIndex).toBeLessThan(mediaIndex);
+      expect(html.indexOf('class="post-body"')).toBeLessThan(tagsIndex);
+      expect(html).toContain('class="post-avatar" aria-hidden="true"');
+      expect(html).toContain('class="post-meta-primary"');
+      expect(html.replaceAll('<!-- -->', '')).toContain('#landscape');
+      expect(html).toContain('disabled="" aria-label="转发功能尚未开放"');
+      expect(html).toContain('aria-label="查看评论" title="查看评论"');
+      expect(html).toContain('aria-label="收藏"');
+      expect(html).not.toContain('class="post-media-count"');
+    });
+  });
+
+  describe('作者信息与缺失字段回退', () => {
+    function render(overrides: Partial<Post> = {}) {
+      return renderToString(React.createElement(BookmarkProvider, null,
+        React.createElement(PostCard, { id: 'danbooru-1', posts: [createPost('danbooru-1', overrides)], onComments: () => {} })));
+    }
+
+    test('使用真实作者与有效时间，不请求后端统一占位照片', () => {
+      const html = render({ artist: 'sample_artist', createdAt: '2026-10-21T12:00:00Z' });
+      expect(html).toContain('class="post-author">sample artist</strong>');
+      expect(html).toContain('class="post-avatar" aria-hidden="true">s</div>');
+      expect(html).toContain('dateTime="2026-10-21T12:00:00.000Z"');
+      expect(html).not.toContain('images.unsplash.com');
+    });
+
+    test('作品作者与上传者不同，头部与头像始终使用作品作者', () => {
+      const metadata = { artist: 'suzuneiroekaki', uploaderName: 'upload_user', uploader_name: 'upload_user' };
+      const html = render(metadata);
+      expect(html).toContain('class="post-author">suzuneiroekaki</strong>');
+      expect(html).toContain('class="post-avatar" aria-hidden="true">s</div>');
+      expect(html).not.toContain('upload_user');
+    });
+
+    test.each([undefined, 'Unknown_Artist'])('作者为 %s 时不使用上传者冒充作者', artist => {
+      const metadata = { artist, uploaderName: 'upload_user', uploader_name: 'upload_user' };
+      const html = render(metadata);
+      expect(html).toContain('class="post-author">未知作者</strong>');
+      expect(html).toContain('class="post-avatar" aria-hidden="true">?</div>');
+      expect(html).not.toContain('upload_user');
+    });
+
+    test.each([undefined, '', '  ', 'Unknown_Artist', 'unknown artist', 'Unknown'])('缺失或占位作者 %s 使用中性回退', artist => {
+      const html = render({ artist, createdAt: 'invalid date' });
+      expect(html).toContain('class="post-author">未知作者</strong>');
+      expect(html).toContain('class="post-avatar" aria-hidden="true">?</div>');
+      expect(html).not.toContain('<time');
+      expect(html).not.toContain('Invalid Date');
+    });
+
+    test('旧缓存的错误字段类型不会使帖子渲染崩溃', () => {
+      const html = render(JSON.parse('{"artist":42,"createdAt":[],"title":false}'));
+      expect(html).toContain('class="post-author">未知作者</strong>');
+      expect(html).not.toContain('<time');
+      expect(html).not.toContain('class="post-body"');
+    });
+
+    test('媒体优先采用有效原图比例，无效比例使用 CSS 默认值', () => {
+      expect(render({ aspectRatio: 0.75 })).toContain('style="aspect-ratio:0.75"');
+      for (const aspectRatio of [undefined, 0, -1, NaN, Infinity]) {
+        expect(render({ aspectRatio })).not.toContain('style="aspect-ratio:');
+      }
+    });
+
+    test('长标签完整保留，未知作者与空标题不会生成伪正文', () => {
+      const tags = Array.from({ length: 100 }, (_, i) => ({ id: String(i), name: `long_tag_${i}`, category: 'general' }));
+      const html = render({ title: '', tags });
+      expect((html.match(/class="post-tag"/g) || []).length).toBe(100);
+      expect(html.replaceAll('<!-- -->', '')).toContain('#long_tag_99');
+      expect(html).not.toContain('class="post-body"');
+      expect(html).not.toContain('<time');
+    });
   });
 
   describe('CSS 样式规范静态断言', () => {
     const cssPath = resolve(__dirname, '../src/style.css');
     const css = readFileSync(cssPath, 'utf-8');
 
-    test('媒体轨道视口单位优化与渲染跳过', () => {
-      // 50svh
-      expect(css).toContain('height: clamp(240px, 50svh, 560px);');
+    test('媒体轨道按原图比例排布，使用稳定视口高度限制长图并保留渲染跳过', () => {
+      expect(css).toContain('aspect-ratio: 4 / 3;');
+      expect(css).toContain('max-height: min(70svh, 680px);');
       // content-visibility: auto 与 contain-intrinsic-size
       expect(css).toContain('content-visibility: auto;');
       expect(css).toContain('contain-intrinsic-size: auto 500px;');
@@ -218,14 +317,18 @@ describe('卡片手势无障碍、选区精准化与外链安全加固', () => {
       expect(css).toContain('user-select: none;');
     });
 
-    test('标签列表防拖拽穿透', () => {
-      expect(css).toContain('overscroll-behavior: contain;');
-      expect(css).toContain('touch-action: pan-y;');
+    test('标签预览只显示四行并省略，不创建滚动容器；详情默认完整展开', () => {
+      const preview = css.match(/\.post-tags\[data-preview="true"\]\s*\{([^}]*)\}/)?.[1];
+      expect(preview).toContain('-webkit-line-clamp: 4;');
+      expect(preview).toContain('overflow: clip;');
+      expect(preview).toContain('max-height: 96px;');
+      const full = css.match(/\.post-tags\s*\{([^}]*)\}/)?.[1];
+      expect(full).not.toMatch(/max-height|overflow-y|line-clamp|overscroll-behavior/);
     });
 
-    test('物理非对称按压与收藏 260ms 轻弹微动效及 82px 防挤压', () => {
-      // 82px 最小宽度防挤压
-      expect(css).toContain('min-width: 82px;');
+    test('图标按钮固定 44px 热区并保留已有按压与收藏反馈', () => {
+      expect(css).toMatch(/\.post-actions button\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/);
+      expect(css).toMatch(/\.post-actions\s*\{[^}]*justify-content:\s*space-between;/);
       // 非对称 70ms 按下，180ms 释放
       expect(css).toContain('180ms');
       expect(css).toContain('70ms');

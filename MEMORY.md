@@ -1,5 +1,23 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
+## 2026-10-22 13:08 标签预览与详情边界
+- 首页和收藏中的标签以四行预览展示，超限显示省略号；使用 `overflow: clip`，不再单独滚动，点击帖子进入详情查看。
+- `PostCard` 根据是否提供 `onOpen` 设置 `data-preview`：列表进行截断，详情不限制标签高度、不截断，全部标签随页面阅读。
+
+## 2026-10-22 12:55 X 风格帖子展示决策
+- 首页、收藏与详情继续共用 `PostCard`，采用左侧中性字母头像、右侧作者与来源信息、正文、井号标签、媒体和图标操作栏；帖子以细分隔线相连，不再使用浮起卡片阴影。
+- 标签位于媒体上方；此时曾采用最大高度 96px 的滚动标签池，现已由 2026-10-22 13:08 的“列表四行省略、详情完整展开”方案替代。
+- 媒体采用后端有效 `aspectRatio`，缺失时回退 4:3，并以 `min(70svh, 680px)` 限高；不再固定为 `50svh`，保留原图完整显示与媒体组横向吸附。
+- Danbooru 转换器的 `artistAvatar` 是统一 Unsplash 占位图，不代表真实作者；前端使用作者首字母，未知作者显示问号，不展示伪造账号、认证或社交数据。
+- 帖子操作栏仅保留评论、禁用转发与收藏，图标按钮固定 44px 热区，使用无障碍名称和悬停标题。
+
+## 2026-10-22 12:12 Refactoring UI 专项打磨与视觉主次工程经验
+- **卡片视觉主次（历史方案）**：此前采用媒体在前、标签池在后且限高 120px；已被 2026-10-22 12:55 的 X 风格方案替代。标签仍保留 `touch-action: pan-y; overscroll-behavior: contain;`。
+- **空状态导流闭环（Next Steps on Empty States）**：列表空状态不可使用孤立纯文本阻断操作流；应提供场景说明与明确的导流 CTA（如“去首页浏览”），直接调用会话系统的 `goArea('home')` 完成平滑切换，杜绝死胡同。
+- **宽屏不对称内边距补偿（Asymmetrical Padding Compensation）**：当网格存在单边分割线（如固定 200px 侧栏的右边框）且全局版心带有 16px 边距时，内容流容器应采用不对称内边距（如 `.feed { padding: 0 8px 0 24px; }`）精确抵消，确保内容卡片到左侧侧栏分割线与到右侧版心边缘的物理间距恒等于 24px，实现严格对称。
+- **表单内容宽度约束（Width Serving Form Content）**：宽屏下（如 1200px 版心）表单卡片必须显式约束 `max-width: 600px`，防止简单的单选卡片横向拉伸至近千像素造成视线涣散与点击目标畸变。
+- **状态通知条轻量实体化**：表单成功/失败通知应赋予 `var(--subtle)` 浅底、圆角与微边框（如 `.setting-notice, .setting-error`），替代粗暴的纯色文字浮动，强化现代界面的实体反馈质感。
+
 ## 2026-10-21 23:51 工单实施与代码审查闭环经验沉淀（#9 ~ #16）
 - **React 状态更新器纯度（State Updater Purity）**：严禁在 `setFeed(current => ...)` 等状态计算闭包中执行 `localStorage` 写盘（如 `writePostCache`）或直接修改外部 Session 对象。React 19 并发渲染与严格模式下更新器会被多次调用，副作用必须在异步业务回调中计算并在调用 `setState(updated)` 前后执行。
 - **元素禁用时的焦点跌落防御（Focus Blur on Disabled）**：当表单重置或点击“取消更改”导致提交/保存按钮因为未修改而立即变为 `disabled` 时，若直接 `submitRef.focus()`，浏览器会将焦点强制 blur 并跌落至 `document.body`。应主动将焦点转移至当前已选中的单选卡片/输入框等可用控件上，保持键盘焦点连续性。
@@ -8,8 +26,8 @@
 ## 2026-10-21 22:35 布局、视觉与 HCI 专项工单化决策
 - **画布与卡片表面解耦（Canvas vs Surface）**：确定引入 `--canvas` 变量（浅色 `#f8f9fa`，深色 `#111215`），`--surface` 仅用于卡片与导航等抬升表面（浅色 `#fff`，深色 `#18191d`），配合 `--card-shadow` 微阴影构建类 Apple Photos / GitHub 的精致实体卡片质感。
 - **移动端 Viewport 根契约**：`index.html` 必须显式声明 `<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />`，否则 iOS Safari 下 `env(safe-area-inset-*)` 强制返回 0px 导致底部 Home Indicator 遮挡导航。
-- **长列表媒体轨道视口单位选型**：无限信息流中的动态媒体高度必须使用小视口单位 `50svh` 而非动态视口单位 `50dvh`，防止滚动期间地址栏收展引起全列表数十张卡片级联强制回流（Layout Thrashing）。
-- **Apple 流体动效与手势规范**：媒体横向滑动使用 `scroll-snap-type: x mandatory` 保证主图精准居中停靠；按钮按压反馈采用物理非对称性（按下瞬时 70ms 下沉，抬起平滑 180ms 恢复）；收藏按钮设立 `min-width: 82px` 消除文案字数跳变挤压；长列表卡片配置 `content-visibility: auto; contain-intrinsic-size: auto 500px;` 隔离离屏 GPU 显存。
+- **长列表媒体轨道视口单位选型**：使用稳定的小视口单位 `svh` 而非 `dvh`，避免地址栏收展导致全列表回流；历史固定高度 `50svh` 已由 2026-10-22 12:55 的比例布局和 `70svh` 上限替代。
+- **Apple 流体动效与手势规范**：媒体横向滑动使用 `scroll-snap-type: x mandatory` 保证主图精准居中停靠；按钮按压反馈采用物理非对称性（按下瞬时 70ms 下沉，抬起平滑 180ms 恢复）；历史收藏按钮曾使用 `min-width: 82px`，现已由 2026-10-22 12:55 的固定 44px 图标按钮替代；长列表卡片配置 `content-visibility: auto; contain-intrinsic-size: auto 500px;` 隔离离屏 GPU 显存。
 - **键盘焦点秩序（Focus Order）**：异步加载（如“加载更多”）或临时撤销按钮（如“取消更改”）在操作中严禁从 DOM 树直接卸载，须通过 disabled 或主动焦点转移防止焦点跌落至 `document.body` 迫使键盘用户从头遍历。
 
 ## 2026-10-21 22:20 前端审阅与跨任务技术规范决策

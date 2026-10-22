@@ -131,8 +131,11 @@ export default function PostDetail() {
         <p className="comment-note">整组评论按时间最新优先，仅供阅读。</p>
         {detail.commentsAvailability === 'local-only' ? <p role="status">仅本地数据模式，原站评论不可用。</p> : detail.commentsAvailability === 'unsupported' ? <p role="status">此来源暂不支持原站评论。</p> : comments && <>
           {comments.displayed.map(comment => <article className="comment" key={commentKey(comment)} data-comment-key={commentKey(comment)}>
-            <header><strong>{comment.author?.trim() || '匿名用户'}</strong><time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('zh-CN')}</time></header>
-            <a href={comment.sourceUrl} target="_blank" rel="noreferrer noopener">{postSource(comment.postId).label} · 原站评论 #{comment.id}</a>
+            <header className="comment-header">
+              <strong>{comment.author?.trim() || '匿名用户'}</strong>
+              <time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('zh-CN')}</time>
+              <a href={comment.sourceUrl} target="_blank" rel="noreferrer noopener">{postSource(comment.postId).label} · 原站评论 #{comment.id}</a>
+            </header>
             <p className="comment-body">{commentTextParts(comment.body).map((part, index) => part.href ? <a key={index} href={part.href} target="_blank" rel="noreferrer noopener">{part.text}</a> : part.text)}</p>
           </article>)}
           <div className="comment-status" aria-live="polite">

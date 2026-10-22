@@ -203,6 +203,12 @@ describe('评论区样式与触控规范静态断言', () => {
     expect(css).toMatch(/\.media-message\s*\{[^}]*animation:[^}]*fade-enter\s+180ms/);
     expect(css).toMatch(/\.media-message\s+a\s*\{[^}]*min-height:\s*44px;/);
   });
+
+  test('Refactoring UI 规范：评论外链收归于 header 内部元信息流，正文紧随其后避免视线割裂', () => {
+    const postDetailPath = resolve(__dirname, '../src/PostDetail.tsx');
+    const postDetailCode = readFileSync(postDetailPath, 'utf-8');
+    expect(postDetailCode).toMatch(/<header[^>]*>[\s\S]*?<strong[^>]*>[\s\S]*?<time[^>]*>[\s\S]*?<a[^>]*href=\{comment\.sourceUrl\}[\s\S]*?<\/header>\s*<p className="comment-body"/);
+  });
 });
 
 describe('PostDetail 与 React 19 StrictMode 容错规范', () => {

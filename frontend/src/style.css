@@ -183,8 +183,9 @@ body {
 .feed-results {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .tag-search { padding: 16px 0 0; }
@@ -243,9 +244,12 @@ body {
   max-width: 100%;
   text-align: left;
   overflow-wrap: anywhere;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 14px;
   background: var(--subtle);
-  border-color: transparent;
-  font-size: 13px;
+  border: 1px solid var(--border);
+  font-size: 12px;
 }
 .search-history li button::after {
   content: "";
@@ -263,72 +267,128 @@ body {
 .search-current button { flex: none; font-size: 13px; }
 
 .post-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
   min-width: 0;
-  min-height: 320px;
-  max-height: 840px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: var(--card-shadow);
   content-visibility: auto;
   contain-intrinsic-size: auto 500px;
+}
+
+.post-avatar {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--subtle);
+  color: var(--muted-strong);
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.post-content {
+  min-width: 0;
+}
+
+.post-body {
+  margin: 2px 0 8px;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .post-meta {
   display: flex;
   flex: none;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px 8px;
-  font-size: 12px;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
 .post-meta a {
-  color: var(--meta-link);
+  color: var(--muted);
   text-decoration: none;
-  font-weight: 600;
+}
+
+.post-meta a:hover {
+  text-decoration: underline;
+}
+
+.post-meta-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+  padding-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.post-author {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.post-meta time {
+  white-space: nowrap;
+}
+
+.post-meta-separator {
+  color: var(--control-border);
+  user-select: none;
+}
+
+.post-media-count {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .post-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 6px;
-  min-height: 0;
-  max-height: 140px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  scrollbar-width: thin;
-  scrollbar-color: var(--control-border) transparent;
-  padding: 6px 14px 14px;
-  font-size: 12px;
-  line-height: 1.5;
+  margin-bottom: 12px;
+  padding: 2px 2px 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.post-tags[data-preview="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  max-height: 96px;
+  overflow: clip;
 }
 
 .post-tag {
-  max-width: 100%;
-  padding: 3px 7px;
-  border-radius: 4px;
-  background: var(--subtle);
-  color: var(--tag-text);
+  margin-right: 4px;
+  color: var(--accent);
 }
 
 .post-media-track {
   display: flex;
   flex: none;
   gap: 8px;
-  height: clamp(240px, 50svh, 560px);
-  margin-top: auto;
+  aspect-ratio: 4 / 3;
+  max-height: min(70svh, 680px);
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--media-bg);
 }
 
@@ -420,6 +480,34 @@ body {
   font-size: 14px;
 }
 
+.feed-empty-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 16px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.feed-empty-guide p {
+  margin: 0;
+}
+
+.feed-empty-guide .empty-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted-strong);
+}
+
+.feed-empty-guide .empty-cta {
+  margin-top: 8px;
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  border-color: var(--primary-bg);
+  font-weight: 500;
+}
+
 .feed button {
   min-height: 44px;
   padding: 8px 16px;
@@ -434,24 +522,28 @@ body {
 .post-actions {
   display: flex;
   flex: none;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--border);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .post-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 10px;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
   border: 0;
-  font-size: 13px;
+  border-radius: 50%;
+  background: transparent;
   color: var(--action-text);
 }
 
-.post-actions svg {
+.post-actions svg,
+.detail-entry svg {
   width: 20px;
   height: 20px;
   fill: none;
@@ -459,10 +551,6 @@ body {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.post-actions .bookmark-button {
-  min-width: 82px;
 }
 
 .post-actions .bookmark-button[aria-pressed="true"] {
@@ -535,6 +623,20 @@ body {
   outline-offset: 2px;
 }
 
+@media (max-width: 479px) {
+  .post-card {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px 8px;
+  }
+
+  .post-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 17px;
+  }
+}
+
 @media (min-width: 768px) {
   .app-shell {
     display: grid;
@@ -564,9 +666,13 @@ body {
     justify-content: flex-start;
     padding: 16px;
   }
+
+  .feed {
+    padding: 0 8px 0 24px;
+  }
 }
 
-.settings { display: grid; gap: 20px; padding: 24px 8px; }
+.settings { display: grid; gap: 20px; padding: 24px 8px; max-width: 600px; }
 .settings h1 { font-size: 22px; }
 .setting-item { display: grid; gap: 16px; }
 .setting-item h2 { margin: 0 0 6px; font-size: 17px; }
@@ -583,9 +689,18 @@ body {
 .setting-actions button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
 .setting-actions .primary { border-color: var(--primary-bg); background: var(--primary-bg); color: var(--primary-text); }
 .setting-actions button:disabled { cursor: not-allowed; opacity: .5; }
-.setting-error { color: var(--error) !important; }
+.setting-error, .setting-notice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.setting-error { color: var(--error) !important; border-color: var(--error); }
 .setting-error button { margin-left: 8px; }
-.setting-notice { color: var(--success) !important; }
+.setting-notice { color: var(--success) !important; border-color: var(--success); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 .detail-header {
@@ -606,9 +721,18 @@ body {
 .detail-header h1 { font-size: 18px; }
 .post-meta .detail-entry {
   position: relative;
-  min-height: 32px;
-  padding: 4px 8px;
-  font-size: 12px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: -6px -8px 0 0;
+  padding: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--action-text);
 }
 .detail-entry::after {
   content: "";
@@ -634,9 +758,11 @@ body {
   padding: 16px 0;
   border-top: 1px solid var(--border);
 }
-.comment header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
-.comment time, .comment > a { font-size: 12px; color: var(--muted-strong); }
-.comment a { overflow-wrap: anywhere; }
+.comment header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.comment strong { font-size: 14px; color: var(--text); }
+.comment time, .comment header a { font-size: 12px; color: var(--muted-strong); }
+.comment header a { overflow-wrap: anywhere; text-decoration: none; }
+.comment header a:hover { text-decoration: underline; }
 .comment-body {
   margin: 0;
   font-size: 14px;
