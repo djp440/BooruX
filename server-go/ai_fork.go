@@ -120,9 +120,9 @@ func (rt *AiRuntime) fork(profileID, srcID, upToRunID string) (M, error) {
 		}
 		for _, rc := range copies {
 			r := rc.run
-			if _, err := tx.Exec(`INSERT INTO ai_runs(id,profileId,conversationId,requestId,status,providerId,modelId,providerName,modelName,reasoningEffort,protocol,configVersion,reasoningSummary,systemPrompt,omitted,createdAt)
-        VALUES(?,?,?,?,'completed',?,?,?,?,?,?,?,?,?,?,?)`, rc.id, profileID, convID, newUUID(), r["providerId"], r["modelId"], r["providerName"], r["modelName"],
-				r["reasoningEffort"], r["protocol"], r["configVersion"], r["reasoningSummary"], r["systemPrompt"], r["omitted"], r["createdAt"]); err != nil {
+			if _, err := tx.Exec(`INSERT INTO ai_runs(id,profileId,conversationId,requestId,status,providerId,modelId,providerName,modelName,reasoningEffort,protocol,configVersion,reasoningSummary,systemPrompt,memory,omitted,createdAt)
+        VALUES(?,?,?,?,'completed',?,?,?,?,?,?,?,?,?,?,?,?)`, rc.id, profileID, convID, newUUID(), r["providerId"], r["modelId"], r["providerName"], r["modelName"],
+				r["reasoningEffort"], r["protocol"], r["configVersion"], r["reasoningSummary"], r["systemPrompt"], r["memory"], r["omitted"], r["createdAt"]); err != nil {
 				return err
 			}
 			for _, m := range rc.messages {

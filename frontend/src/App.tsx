@@ -4,7 +4,7 @@ import PostFeed, { ArtistPage } from './PostFeed';
 import PostDetail from './PostDetail';
 import Settings from './Settings';
 import { BookmarkProvider, useBookmarks } from './Bookmarks';
-import { areaForPath, PageSessionProvider, usePageSession } from './page-session';
+import { areaForPath, isChatPath, PageSessionProvider, usePageSession } from './page-session';
 import { Icon } from './icons';
 
 // 对话页带 Markdown 渲染依赖，按需加载，不拖慢首页首屏。
@@ -25,9 +25,10 @@ function BookmarkToast() {
 
 export function Layout() {
   const { pathname } = useLocation();
-  const { store, save, goArea, goChat } = usePageSession();
+  const { store, page, save, goArea, goChat } = usePageSession();
   const settingsActive = pathname === '/settings';
-  const chatActive = pathname === '/chat' || pathname.startsWith('/chat/');
+  // 从对话页打开的帖子详情仍归属 AI 助手，导航高亮与「AI 助手」入口据此判断。
+  const chatActive = isChatPath(pathname) || isChatPath(page.origin?.path ?? '');
   return (
     <div className="app-shell">
       <a href="#content" className="skip-link">跳到主要内容</a>
