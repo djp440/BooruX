@@ -33,25 +33,25 @@ function setupMockDOM() {
   const originalDoc = globalThis.document;
   const originalStorage = globalThis.localStorage;
 
-  globalThis.window = win as any;
-  globalThis.document = doc as any;
-  setLocalStorage(fakeStorage);
+  setGlobal('window', win);
+  setGlobal('document', doc);
+  setGlobal('localStorage', fakeStorage);
 
   return {
     doc,
     win,
     fakeStorage,
     restore: () => {
-      globalThis.window = originalWindow;
-      globalThis.document = originalDoc;
-      setLocalStorage(originalStorage);
+      setGlobal('window', originalWindow);
+      setGlobal('document', originalDoc);
+      setGlobal('localStorage', originalStorage);
     },
   };
 }
 
-// bun 1.4 起 localStorage 是只读全局，不能直接赋值
-function setLocalStorage(value: unknown) {
-  Object.defineProperty(globalThis, 'localStorage', { value, configurable: true, writable: true });
+// 部分 bun 环境下这些全局只读，不能直接赋值（与 page-session.test.ts 一致）
+function setGlobal(name: string, value: unknown) {
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
 }
 
 function mockPost(id: string): Post {
