@@ -50,7 +50,9 @@ export class PageSessions {
     const id = this.entries[this.index].sessionId;
     let page = this.pages.get(id);
     if (!page) { page = { id, path, position: { y: 0, anchors: [] } }; this.pages.set(id, page); }
-    if (path === '/' || path.startsWith('/posts/') || path === '/favorites' || path.startsWith('/favorites/posts/')) this.lastVisit[areaForPath(path)] = page;
+    // 从对话页打开的详情属于对话流程，不能当作首页/收藏的现场，否则点「首页」会被拉回这个详情。
+    const fromChat = isChatPath(page.origin?.path ?? '');
+    if (!fromChat && (path === '/' || path.startsWith('/posts/') || path === '/favorites' || path.startsWith('/favorites/posts/'))) this.lastVisit[areaForPath(path)] = page;
     if (isChatPath(path)) this.lastChat = page;
     this.prune();
     return page;

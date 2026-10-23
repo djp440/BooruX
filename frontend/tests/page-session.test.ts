@@ -82,6 +82,16 @@ describe('详情页面内存会话', () => {
     expect(list.position.y).toBe(1200);
     expect(store.visit('h3', detail.path, 'POP')).toBe(detail);
   });
+  test('从对话页打开的详情不算首页现场，返回对话后首页仍是列表', () => {
+    const store = new PageSessions();
+    const home = store.visit('h1', '/', 'POP');
+    const chat = store.visit('c1', '/chat/abc', 'PUSH');
+    const detail = store.open('/posts/9', chat, 'c1');
+    store.visit('d1', detail.path, 'PUSH', detail.id);
+    expect(store.lastVisit.home).toBe(home);
+    expect(store.lastChat).toBe(chat);
+    expect(store.backDelta(detail)).toBe(-1);
+  });
   test('两导航各自详情，同 URL 不同进入来源，POP 与前进不会覆盖来源', () => {
     const store = new PageSessions();
     const home = store.visit('h1', '/', 'POP');
