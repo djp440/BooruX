@@ -167,6 +167,9 @@ export function toolSummary(call: ToolCall): string {
     case 'list_bookmarks': return `查看收藏${count(result.posts, '个作品')}`;
     case 'search_tags': return `查询标签 · ${args.query ?? ''}${count(result.tags, '个标签')}`;
     case 'set_bookmark': return `${args.bookmarked === false ? '取消收藏' : '收藏'} ${args.id ?? ''}`.trim();
+    case 'save_memory': return `记住 · ${args.text ?? ''}`;
+    case 'update_memory': return `更新记忆 · ${args.text ?? ''}`;
+    case 'forget_memory': return '忘掉一条记忆';
     default: return call.name;
   }
 }

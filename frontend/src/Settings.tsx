@@ -7,6 +7,7 @@ import { useBookmarks } from './Bookmarks';
 import { clearPostsCache, postsCacheSize } from './post-cache';
 import { clearSearchHistory, readSearchHistory } from './search';
 import { Icon } from './icons';
+import MemorySettings from './MemorySettings';
 import ProviderSettings from './ProviderSettings';
 
 type Scope = 'theme' | 'rating' | 'tags' | 'history' | 'cache';
@@ -312,6 +313,7 @@ export default function Settings() {
 
       <Group index={2} active={tab}>
         <ProviderSettings />
+        <MemorySettings />
       </Group>
 
       <Group index={3} active={tab}>

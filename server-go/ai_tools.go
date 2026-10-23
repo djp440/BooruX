@@ -27,6 +27,9 @@ var aiTools = func() []ToolDefinition {
 		toolDef("list_bookmarks", "读取当前配置允许的收藏作品并在对话中显示媒体。", M{"limit": lim}),
 		toolDef("view_post_image", "查看作品的画面。仅当回答需要了解图片视觉内容时调用（如用户要求看图、描述或识别画面）；收藏、查标签、搜索等不依赖画面的操作不要调用。", M{"id": s}, "id"),
 		toolDef("search_tags", "查询当前配置允许的作品标签。", M{"query": s}, "query"),
+		toolDef("save_memory", "记住用户与画廊使用或交流风格相关的稳定偏好（如喜欢/排斥的标签、画师、分级、回复风格）。一条一句话；临时请求、一次性任务、账号密钥等敏感信息不要记。用户要求“记住”时也调用。总字数有上限，满了需先合并或遗忘旧条目。", M{"text": s}, "text"),
+		toolDef("update_memory", "按 ID 改写一条已有记忆（用于合并或修正）。", M{"id": s, "text": s}, "id", "text"),
+		toolDef("forget_memory", "按 ID 删除一条记忆；用户要求忘掉时调用。", M{"id": s}, "id"),
 		toolDef("set_bookmark", "仅当用户当前明确要求对具体作品 ID 收藏或取消收藏时执行；目标不明请询问。", M{"id": s, "bookmarked": M{"type": "boolean"}}, "id", "bookmarked"),
 	}
 }()
@@ -107,7 +110,11 @@ func validateTool(name, raw string) (M, error) {
 		if !valid {
 			return nil, errors.New("工具参数类型无效")
 		}
-		if s, isStr := val.(string); isStr && (utf16Len(s) > 300 || (k == "id" && strings.TrimSpace(s) == "")) {
+		maxLen := 300
+		if k == "text" {
+			maxLen = memoryMaxLimit
+		}
+		if s, isStr := val.(string); isStr && (utf16Len(s) > maxLen || (k == "id" && strings.TrimSpace(s) == "")) {
 			return nil, errors.New("工具参数长度无效")
 		}
 	}
@@ -150,6 +157,9 @@ func explicitBookmarkIntent(text, id string, bookmarked bool) bool {
 func executeTool(ctx context.Context, db *sql.DB, profileID, name string, args M, userText string) (M, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if strings.HasSuffix(name, "_memory") {
+		return executeMemoryTool(db, profileID, name, args)
 	}
 	if name == "get_post" || name == "set_bookmark" {
 		post, _ := getPostByID(db, str(args["id"]), profileID)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"context"
 	"database/sql"
 	_ "embed"
@@ -25,7 +26,7 @@ const (
 	defaultProfileID   = "default"
 	defaultProfileName = "默认配置"
 	maxProfileName     = 40
-	maxSettings        = 12
+	maxSettings        = 16
 	maxSearchHistory   = 12
 )
 
@@ -460,6 +461,17 @@ func setProfileSettings(db *sql.DB, profileID string, settings M) (M, error) {
 					return errors.New("INVALID_SETTING")
 				}
 				value = strings.TrimSpace(s)
+			}
+			if nk == "aiMemoryEnabled" {
+				if _, ok := value.(bool); !ok {
+					return errors.New("INVALID_SETTING")
+				}
+			}
+			if nk == "aiMemoryLimit" {
+				f, ok := value.(float64)
+				if !ok || f != math.Trunc(f) || f < memoryMinLimit || f > memoryMaxLimit {
+					return errors.New("INVALID_SETTING")
+				}
 			}
 			b, _ := json.Marshal(value)
 			if _, err := tx.Exec(`INSERT INTO profile_settings (profile_id,setting_key,setting_value,updated_at) VALUES (?,?,?,?)

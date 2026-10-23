@@ -343,6 +343,46 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, rt.chat(pid))
 	}))
+	mem := base + "/memories"
+	memErr := func(w http.ResponseWriter, err error) {
+		code := 400
+		if err == errMemoryFull {
+			code = 409
+		} else if err == errMemoryNotFound {
+			code = 404
+		}
+		jerr(w, code, err.Error())
+	}
+	mux.HandleFunc("GET "+mem, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		on, limit := memoryConfig(s.db, pid)
+		writeJSON(w, 200, M{"enabled": on, "limit": limit, "used": memoryUsed(s.db, pid, ""), "memories": memoryList(s.db, pid)})
+	}))
+	mux.HandleFunc("POST "+mem, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		id, err := memorySave(s.db, pid, "", str(readBody(r)["text"]), "user")
+		if err != nil {
+			memErr(w, err)
+			return
+		}
+		writeJSON(w, 201, M{"id": id})
+	}))
+	mux.HandleFunc("PATCH "+mem+"/{id}", chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		if _, err := memorySave(s.db, pid, r.PathValue("id"), str(readBody(r)["text"]), "user"); err != nil {
+			memErr(w, err)
+			return
+		}
+		writeJSON(w, 200, M{"ok": true})
+	}))
+	mux.HandleFunc("DELETE "+mem+"/{id}", chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		if err := memoryDelete(s.db, pid, r.PathValue("id")); err != nil {
+			memErr(w, err)
+			return
+		}
+		writeJSON(w, 200, M{"ok": true})
+	}))
+	mux.HandleFunc("DELETE "+mem, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		_, _ = s.db.Exec("DELETE FROM ai_memories WHERE profileId=?", pid)
+		writeJSON(w, 200, M{"ok": true})
+	}))
 	const convs = "/api/profiles/{profileId}/conversations"
 	mux.HandleFunc("GET "+convs, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
 		writeJSON(w, 200, M{"conversations": rt.listConversations(pid)})
