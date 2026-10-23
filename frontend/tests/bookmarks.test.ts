@@ -35,7 +35,7 @@ function setupMockDOM() {
 
   globalThis.window = win as any;
   globalThis.document = doc as any;
-  globalThis.localStorage = fakeStorage as any;
+  setLocalStorage(fakeStorage);
 
   return {
     doc,
@@ -44,9 +44,14 @@ function setupMockDOM() {
     restore: () => {
       globalThis.window = originalWindow;
       globalThis.document = originalDoc;
-      globalThis.localStorage = originalStorage;
+      setLocalStorage(originalStorage);
     },
   };
+}
+
+// bun 1.4 起 localStorage 是只读全局，不能直接赋值
+function setLocalStorage(value: unknown) {
+  Object.defineProperty(globalThis, 'localStorage', { value, configurable: true, writable: true });
 }
 
 function mockPost(id: string): Post {
