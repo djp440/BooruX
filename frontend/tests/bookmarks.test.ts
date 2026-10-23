@@ -33,20 +33,25 @@ function setupMockDOM() {
   const originalDoc = globalThis.document;
   const originalStorage = globalThis.localStorage;
 
-  globalThis.window = win as any;
-  globalThis.document = doc as any;
-  globalThis.localStorage = fakeStorage as any;
+  setGlobal('window', win);
+  setGlobal('document', doc);
+  setGlobal('localStorage', fakeStorage);
 
   return {
     doc,
     win,
     fakeStorage,
     restore: () => {
-      globalThis.window = originalWindow;
-      globalThis.document = originalDoc;
-      globalThis.localStorage = originalStorage;
+      setGlobal('window', originalWindow);
+      setGlobal('document', originalDoc);
+      setGlobal('localStorage', originalStorage);
     },
   };
+}
+
+// 部分 bun 环境下这些全局只读，不能直接赋值（与 page-session.test.ts 一致）
+function setGlobal(name: string, value: unknown) {
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
 }
 
 function mockPost(id: string): Post {
