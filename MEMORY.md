@@ -1,5 +1,20 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
+## 2026-10-23 14:50 AI 对话页与会话层
+- 后端早已有完整的 agent 运行时（`ai_runtime.go` 的 `runLoop` + `ai_tools.go` 的 5 个工具 + SSE 事件回放）。这次只补了会话层：新增 `ai_conversations` 表，给 `ai_runs` 加 `conversationId` 列，消息、工具调用、事件都经 runId 归属会话，删除会话即级联删除。`buildContext` 按 `run.conversationId` 取消息，这是会话隔离的关键。“只能有一个运行中任务”的唯一索引改为按会话（`ai_one_active_run_conversation`）。引入会话之前的旧 runs 由 `migrateConversations` 归入“此前的对话”。
+- 删除会话前要先删除这些 runs 绑定的附件文件：`ai_attachments.runId` 是 `ON DELETE SET NULL`，不先删文件会留下孤儿文件。
+- 前端用 `applyEvent` 纯函数归并事件，按事件 id 去重。一轮结束后重新拉取快照兜底，因为快照与游标之间存在极小的竞态窗口，可能重复或缺少一小段增量，`message_completed` 和重新拉取会修正。新对话在首条消息发送时才创建，用 `created` ref 跳过跳转后的重复加载。
+- 会话列表做成页头下方的下拉抽屉（15:20 按用户要求修改：左侧留白不能放侧边栏）。点击标题切换展开；面板放在页头之后、`position: sticky` 的锚点里。不能放进页头内部，因为页头有 `transform`，会让内部 `fixed` 定位的透明遮罩失效。遮罩不加暗色，否则只有页头以下变暗，左侧品牌区和导航不一致。
+- 覆盖层的“后退只关闭自身”逻辑已抽成 `history-layer.ts` 的 `useHistoryLayer`，媒体查看器和会话抽屉共用。抽屉中选中会话时先回退抽屉的历史记录，再在 onClose 里跳转。
+- 对话页通过 `lazy()` 按需加载（`react-markdown` 约 180KB），首页包从 509KB 降到 331KB。Go 服务内嵌的是编译时的前端产物，重新构建前端后必须重启 `go run`，否则会请求到旧的资源文件。
+- 端到端验证：`.e2e-data/polish/fake-models.mjs` 模拟 agent（消息含“找/搜”时先推理并调用 `search_posts`，拿到工具结果后流式输出 Markdown；含“慢”时慢速输出，用来测试停止），脚本为 `chat-check.mjs`。
+
+## 2026-10-23 14:30 设置页供应商分组
+- 后端早已有完整的 AI 供应商实现（`ai_db.go`、`ai_routes.go` 的 `/api/ai/providers*`），前端此前没有接入。拉取模型时，发现的所有模型都会写入 `ai_models`，所以用 `manual` 区分两类：`manual=1` 为已加入，`manual=0 && available=1` 为候选。手动新增的模型写入 `available=0`；移除时，被拉取到的模型退回候选，手动新增的模型直接删除。
+- 主模型复用对话模型选择 `ai_chats.selection`（`PUT /api/profiles/default/chat`）。移除模型或删除供应商时，后端同时清空指向它的主模型。`providerId` 与 `modelId` 都传空字符串时清除选择，主模型改回“未设置”（14:50 补充）。
+- 连通性测试复用已有的 `POST /api/ai/providers/{id}/models/verify`（`capability: chat`）；15:10 起该接口额外返回 `reply`（前 100 字符）和 `latencyMs`。
+- 端到端验证用 `.e2e-data/polish/fake-models.mjs`（48399 端口）模拟 `/v1/models` 和 `/v1/chat/completions`（beta-vision 返回 400），脚本为 `provider-check.mjs`。
+
 ## 2026-10-23 13:20 设置页分组与标签屏蔽
 - 设置页分为外观、内容、数据与存储、关于四组，用标签页切换，每次只显示一个分组（13:40 按用户要求，从“单页滚动加锚点”改为此方案）。结构上，`role=tablist` 下是 `role=tab` 按钮，方向键和 Home/End 切换焦点；`section.setting-group[role=tabpanel]` 内含视觉隐藏的 `h2` 和 `.setting-group-body` 卡片，设置项标题降为 `h3`。各分组的草稿状态都放在 `Settings` 中，非当前分组直接卸载也不会丢草稿。保存提示通过 `scope` 状态显示在对应设置项内，加载失败仍放在页面顶部。
 - 首页与搜索的列表接口 `GET /api/danbooru/posts` 原本漏掉了 `tagFilter`（详情、关联媒体、收藏早已过滤），现已用 `filterAllowedPosts` 补上。过滤必须放在 `nextCursor` 计算之后，保证游标仍基于原始结果。

@@ -59,13 +59,73 @@ func (rt *AiRuntime) getRun(profileID, id string) (M, error) {
 	return r, nil
 }
 
+// chat 返回对话设置：是否已配置供应商，以及主模型选择。
 func (rt *AiRuntime) chat(profileID string) M {
-	configured := len(listProviders(rt.db)) > 0
 	sel, _ := queryMap(rt.db, "SELECT providerId,modelId,reasoningEffort FROM ai_chats WHERE profileId=?", profileID)
 	if sel == nil {
 		sel = M{}
 	}
-	rows, _ := queryMaps(rt.db, "SELECT * FROM ai_messages WHERE profileId=? ORDER BY id", profileID)
+	return M{"configured": len(listProviders(rt.db)) > 0, "selection": sel}
+}
+
+func (rt *AiRuntime) getConversation(profileID, id string) (M, error) {
+	c, _ := queryMap(rt.db, "SELECT id,title,createdAt,updatedAt FROM ai_conversations WHERE id=? AND profileId=?", id, profileID)
+	if c == nil {
+		return nil, errors.New("会话不存在")
+	}
+	return c, nil
+}
+
+// listConversations 按最近活动排序，status 为最后一轮的状态。
+func (rt *AiRuntime) listConversations(profileID string) []M {
+	rows, _ := queryMaps(rt.db, `SELECT c.id,c.title,c.createdAt,c.updatedAt,
+      (SELECT status FROM ai_runs r WHERE r.conversationId=c.id ORDER BY r.rowid DESC LIMIT 1) AS status
+      FROM ai_conversations c WHERE c.profileId=? ORDER BY c.updatedAt DESC, c.rowid DESC`, profileID)
+	if rows == nil {
+		rows = []M{}
+	}
+	return rows
+}
+
+func (rt *AiRuntime) createConversation(profileID string) (M, error) {
+	id, now := newUUID(), nowISO()
+	if _, err := rt.db.Exec("INSERT INTO ai_conversations(id,profileId,title,createdAt,updatedAt) VALUES(?,?,'',?,?)", id, profileID, now, now); err != nil {
+		return nil, err
+	}
+	return rt.getConversation(profileID, id)
+}
+
+func (rt *AiRuntime) renameConversation(profileID, id, title string) (M, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || utf16Len(title) > 100 {
+		return nil, errors.New("标题长度应为 1–100 个字符")
+	}
+	if _, err := rt.getConversation(profileID, id); err != nil {
+		return nil, err
+	}
+	_, _ = rt.db.Exec("UPDATE ai_conversations SET title=? WHERE id=?", title, id)
+	return rt.getConversation(profileID, id)
+}
+
+// conversationTitle 取首条消息的前 30 个字符作为默认标题。
+func conversationTitle(text string) string {
+	r := []rune(strings.Join(strings.Fields(text), " "))
+	if len(r) == 0 {
+		return "图片对话"
+	}
+	if len(r) > 30 {
+		return string(r[:30]) + "…"
+	}
+	return string(r)
+}
+
+// conversation 返回会话的消息、轮次、工具调用与事件游标。
+func (rt *AiRuntime) conversation(profileID, conversationID string) (M, error) {
+	conv, err := rt.getConversation(profileID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	rows, _ := queryMaps(rt.db, "SELECT m.* FROM ai_messages m JOIN ai_runs r ON r.id=m.runId WHERE r.conversationId=? ORDER BY m.id", conversationID)
 	messages := []M{}
 	for _, m := range rows {
 		var v M
@@ -89,8 +149,8 @@ func (rt *AiRuntime) chat(profileID string) M {
 		}
 		messages = append(messages, out)
 	}
-	runs, _ := queryMaps(rt.db, "SELECT * FROM ai_runs WHERE profileId=? ORDER BY rowid", profileID)
-	calls, _ := queryMaps(rt.db, "SELECT c.* FROM ai_calls c JOIN ai_runs r ON r.id=c.runId WHERE r.profileId=? ORDER BY c.id", profileID)
+	runs, _ := queryMaps(rt.db, "SELECT * FROM ai_runs WHERE conversationId=? ORDER BY rowid", conversationID)
+	calls, _ := queryMaps(rt.db, "SELECT c.* FROM ai_calls c JOIN ai_runs r ON r.id=c.runId WHERE r.conversationId=? ORDER BY c.id", conversationID)
 	for _, c := range calls {
 		if s := str(c["result"]); c["result"] != nil && s != "" {
 			var v any
@@ -101,8 +161,8 @@ func (rt *AiRuntime) chat(profileID string) M {
 		}
 	}
 	var cursor int64
-	_ = rt.db.QueryRow("SELECT COALESCE(MAX(e.id),0) FROM ai_events e JOIN ai_runs r ON r.id=e.runId WHERE r.profileId=?", profileID).Scan(&cursor)
-	return M{"configured": configured, "selection": sel, "messages": messages, "runs": runs, "calls": calls, "cursor": cursor}
+	_ = rt.db.QueryRow("SELECT COALESCE(MAX(e.id),0) FROM ai_events e JOIN ai_runs r ON r.id=e.runId WHERE r.conversationId=?", conversationID).Scan(&cursor)
+	return M{"conversation": conv, "messages": messages, "runs": runs, "calls": calls, "cursor": cursor}, nil
 }
 
 func (rt *AiRuntime) selectModel(profileID, providerID, modelID string, effort *string) error {
@@ -134,12 +194,16 @@ func addMessage(q querier, profileID, runID string, m ChatMessage, status string
 	return id
 }
 
-func (rt *AiRuntime) create(profileID, requestID, text string, attachmentIDs []string) (M, error) {
+func (rt *AiRuntime) create(profileID, conversationID, requestID, text string, attachmentIDs []string) (M, error) {
 	rt.mu.Lock()
-	clearing := rt.clearing[profileID]
+	clearing := rt.clearing[conversationID]
 	rt.mu.Unlock()
 	if clearing {
-		return nil, errors.New("对话正在清空，请稍后发送")
+		return nil, errors.New("会话正在删除")
+	}
+	conv, err := rt.getConversation(profileID, conversationID)
+	if err != nil {
+		return nil, err
 	}
 	if requestID == "" || len(requestID) > 100 || utf16Len(text) > 8000 {
 		return nil, errors.New("消息或请求标识无效")
@@ -154,7 +218,7 @@ func (rt *AiRuntime) create(profileID, requestID, text string, attachmentIDs []s
 	if strings.TrimSpace(text) == "" && len(images) == 0 {
 		return nil, errors.New("请输入消息或添加图片")
 	}
-	if exists(rt.db, "SELECT id FROM ai_runs WHERE profileId=? AND status IN ('pending','running')", profileID) {
+	if exists(rt.db, "SELECT id FROM ai_runs WHERE conversationId=? AND status IN ('pending','running')", conversationID) {
 		return nil, errors.New("当前对话已有运行任务")
 	}
 	cfg, model, effort, err := rt.snapshot(profileID)
@@ -164,9 +228,16 @@ func (rt *AiRuntime) create(profileID, requestID, text string, attachmentIDs []s
 	systemPrompt, _ := getProfileSettings(rt.db, profileID)["aiSystemPrompt"].(string)
 	id := newUUID()
 	err = withTx(rt.db, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO ai_runs(id,profileId,requestId,status,providerId,modelId,providerName,modelName,reasoningEffort,protocol,configVersion,reasoningSummary,systemPrompt)
-        VALUES(?,?,?,'pending',?,?,?,?,?,?,?,?,?)`, id, profileID, requestID, cfg.ID, model.ID, cfg.Name, model.Name,
+		if _, err := tx.Exec(`INSERT INTO ai_runs(id,profileId,conversationId,requestId,status,providerId,modelId,providerName,modelName,reasoningEffort,protocol,configVersion,reasoningSummary,systemPrompt)
+        VALUES(?,?,?,?,'pending',?,?,?,?,?,?,?,?,?)`, id, profileID, conversationID, requestID, cfg.ID, model.ID, cfg.Name, model.Name,
 			effort, cfg.Protocol, cfg.Version, model.ReasoningSummary, systemPrompt); err != nil {
+			return err
+		}
+		title := str(conv["title"])
+		if title == "" {
+			title = conversationTitle(text)
+		}
+		if _, err := tx.Exec("UPDATE ai_conversations SET title=?,updatedAt=? WHERE id=?", title, nowISO(), conversationID); err != nil {
 			return err
 		}
 		if err := rt.attachments.bind(tx, profileID, attachmentIDs, id); err != nil {
@@ -322,40 +393,47 @@ func (rt *AiRuntime) cancel(profileID, id, reason string) {
 	rt.event(id, "run_failed", M{"status": "cancelled", "error": reason})
 }
 
-func (rt *AiRuntime) clear(profileID string) error {
-	rt.mu.Lock()
-	if rt.clearing[profileID] {
-		rt.mu.Unlock()
-		return errors.New("对话正在清空")
+// deleteConversation 停止运行中的任务、删除已发送的图片，再级联删除会话的轮次与消息。
+func (rt *AiRuntime) deleteConversation(profileID, conversationID string) error {
+	if _, err := rt.getConversation(profileID, conversationID); err != nil {
+		return err
 	}
-	rt.clearing[profileID] = true
+	rt.mu.Lock()
+	if rt.clearing[conversationID] {
+		rt.mu.Unlock()
+		return errors.New("会话正在删除")
+	}
+	rt.clearing[conversationID] = true
 	rt.mu.Unlock()
-	defer func() { rt.mu.Lock(); delete(rt.clearing, profileID); rt.mu.Unlock() }()
+	defer func() { rt.mu.Lock(); delete(rt.clearing, conversationID); rt.mu.Unlock() }()
 	var running string
-	if rt.db.QueryRow("SELECT id FROM ai_runs WHERE profileId=? AND status IN ('pending','running')", profileID).Scan(&running) == nil {
+	if rt.db.QueryRow("SELECT id FROM ai_runs WHERE conversationId=? AND status IN ('pending','running')", conversationID).Scan(&running) == nil {
 		rt.cancel(profileID, running, "已停止")
 	}
-	rt.attachments.clear(profileID)
-	_, err := rt.db.Exec("DELETE FROM ai_runs WHERE profileId=?", profileID)
+	rows, _ := queryMaps(rt.db, "SELECT a.id FROM ai_attachments a JOIN ai_runs r ON r.id=a.runId WHERE r.conversationId=?", conversationID)
+	for _, r := range rows {
+		_ = rt.attachments.remove(profileID, str(r["id"]), true)
+	}
+	_, err := rt.db.Exec("DELETE FROM ai_conversations WHERE id=?", conversationID)
 	return err
 }
 
 func (rt *AiRuntime) retry(profileID, id string) (M, error) {
-	rt.mu.Lock()
-	clearing := rt.clearing[profileID]
-	rt.mu.Unlock()
-	if clearing {
-		return nil, errors.New("对话正在清空，请稍后重试")
-	}
 	run, err := rt.getRun(profileID, id)
 	if err != nil {
 		return nil, err
+	}
+	rt.mu.Lock()
+	clearing := rt.clearing[str(run["conversationId"])]
+	rt.mu.Unlock()
+	if clearing {
+		return nil, errors.New("会话正在删除")
 	}
 	if s := str(run["status"]); s != "failed" && s != "cancelled" && s != "interrupted" {
 		return nil, errors.New("此任务不能重试")
 	}
 	var latest string
-	_ = rt.db.QueryRow("SELECT id FROM ai_runs WHERE profileId=? ORDER BY rowid DESC LIMIT 1", profileID).Scan(&latest)
+	_ = rt.db.QueryRow("SELECT id FROM ai_runs WHERE conversationId=? ORDER BY rowid DESC LIMIT 1", run["conversationId"]).Scan(&latest)
 	if latest != id {
 		return nil, errors.New("只能重试最后一轮对话")
 	}
@@ -389,7 +467,8 @@ func stripResponse(m ChatMessage) ChatMessage {
 func (rt *AiRuntime) buildContext(run M, supportsTools bool) ([]ChatMessage, error) {
 	profileID, runID := str(run["profileId"]), str(run["id"])
 	system := systemFor(str(run["systemPrompt"]))
-	rows, _ := queryMaps(rt.db, "SELECT runId,payload FROM ai_messages WHERE profileId=? AND status='completed' ORDER BY id", profileID)
+	// 只取本会话的消息，会话之间互不可见
+	rows, _ := queryMaps(rt.db, "SELECT m.runId,m.payload FROM ai_messages m JOIN ai_runs r ON r.id=m.runId WHERE r.conversationId=? AND m.status='completed' ORDER BY m.id", run["conversationId"])
 	var order []string
 	grouped := map[string][]ChatMessage{}
 	for _, row := range rows {

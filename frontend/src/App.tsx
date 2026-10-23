@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Link, Outlet, Route, Routes, useLocation, useParams } from 'react-router';
 import PostFeed, { ArtistPage } from './PostFeed';
 import PostDetail from './PostDetail';
@@ -6,6 +6,10 @@ import Settings from './Settings';
 import { BookmarkProvider, useBookmarks } from './Bookmarks';
 import { areaForPath, PageSessionProvider, usePageSession } from './page-session';
 import { Icon } from './icons';
+
+// 对话页带 Markdown 渲染依赖，按需加载，不拖慢首页首屏。
+const Chat = lazy(() => import('./Chat'));
+const chat = <Suspense fallback={<div className="chat-loading" role="status"><span className="spinner" aria-hidden="true" />正在加载…</div>}><Chat /></Suspense>;
 
 // 收藏成功的短暂提示，出现在操作附近的视口底部；失败仍在卡片内以 alert 呈现。
 function BookmarkToast() {
@@ -23,18 +27,22 @@ export function Layout() {
   const { pathname } = useLocation();
   const { store, save, goArea } = usePageSession();
   const settingsActive = pathname === '/settings';
+  const chatActive = pathname === '/chat' || pathname.startsWith('/chat/');
   return (
     <div className="app-shell">
       <a href="#content" className="skip-link">跳到主要内容</a>
       <nav className="navigation" aria-label="主导航">
         <div className="brand"><span className="brand-mark" aria-hidden="true">B</span>BooruX</div>
         {(['home', 'favorites'] as const).map(area => {
-          const active = !settingsActive && areaForPath(pathname) === area;
+          const active = !settingsActive && !chatActive && areaForPath(pathname) === area;
           return <Link key={area} to={store.lastVisit[area]?.path || (area === 'home' ? '/' : '/favorites')} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined}
             onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); goArea(area); } }}>
             <Icon name={area === 'home' ? 'home' : 'bookmark'} /><span>{area === 'home' ? '首页' : '收藏'}</span>
           </Link>;
         })}
+        <Link to="/chat" className={chatActive ? 'active' : ''} aria-current={chatActive ? 'page' : undefined} onClick={save}>
+          <Icon name="sparkle" /><span>AI 助手</span>
+        </Link>
         <Link to="/settings" className={settingsActive ? 'active' : ''} aria-current={settingsActive ? 'page' : undefined} onClick={save}>
           <Icon name="settings" /><span>设置</span>
         </Link>
@@ -75,6 +83,8 @@ export default function App() {
       <Route path="artists/:name" element={<ArtistRoute />} />
       <Route path="favorites" element={<FeedRoute kind="favorites" />} />
       <Route path="favorites/posts/:id" element={<DetailRoute />} />
+      <Route path="chat" element={chat} />
+      <Route path="chat/:conversationId" element={chat} />
       <Route path="settings" element={<Settings />} />
       <Route path="*" element={<NotFound />} />
     </Route></Routes>

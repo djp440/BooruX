@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func testServer(t *testing.T) http.Handler {
@@ -250,7 +254,7 @@ func TestChatStateExplicitlyReportsNoProvider(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", w.Code, w.Body.String())
 	}
-	if got := w.Body.String(); !strings.Contains(got, "\"configured\":false") || !strings.Contains(got, "\"messages\":[]") {
+	if got := w.Body.String(); !strings.Contains(got, "\"configured\":false") {
 		t.Fatalf("body = %s", got)
 	}
 }
@@ -547,5 +551,196 @@ func TestBookmarkRejectedByRatingDoesNotWrite(t *testing.T) {
 	}
 	if p != nil || exists(db, "SELECT 1 FROM profile_bookmarks WHERE profile_id=? AND post_id=?", defaultProfileID, "hidden") {
 		t.Fatal("disallowed bookmark was written")
+	}
+}
+
+func TestProviderModelAddRemoveAndMainModel(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	if _, err := db.Exec(`INSERT INTO ai_providers(id,name,baseUrl,apiKey) VALUES('p','P','http://x','');
+		INSERT INTO ai_models(providerId,id,name) VALUES('p','m1','m1'),('p','m2','m2')`); err != nil {
+		t.Fatal(err)
+	}
+	manual := func(id string) int {
+		v := -1
+		_ = db.QueryRow("SELECT manual FROM ai_models WHERE providerId='p' AND id=?", id).Scan(&v)
+		return v
+	}
+	if w := do(h, "PUT", "/api/ai/providers/p/models", `{"id":"m1"}`); w.Code != 200 || manual("m1") != 1 {
+		t.Fatal(w.Body.String(), manual("m1"))
+	}
+	if w := do(h, "PUT", "/api/profiles/default/chat", `{"providerId":"p","modelId":"m1"}`); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if w := do(h, "PUT", "/api/profiles/default/chat", `{"providerId":"","modelId":""}`); w.Code != 200 || strings.Contains(w.Body.String(), `"modelId":"m1"`) {
+		t.Fatal("清除主模型失败", w.Body.String())
+	}
+	do(h, "PUT", "/api/profiles/default/chat", `{"providerId":"p","modelId":"m1"}`)
+	if w := do(h, "DELETE", "/api/ai/providers/p/models/m1", ""); w.Code != 200 || manual("m1") != 0 {
+		t.Fatal(w.Body.String(), manual("m1"))
+	}
+	if w := do(h, "GET", "/api/profiles/default/chat", ""); strings.Contains(w.Body.String(), `"modelId":"m1"`) {
+		t.Fatal("主模型未清空", w.Body.String())
+	}
+	// 不在拉取列表中的手动模型移除后彻底删除
+	do(h, "PUT", "/api/ai/providers/p/models", `{"id":"custom"}`)
+	do(h, "DELETE", "/api/ai/providers/p/models/custom", "")
+	if manual("custom") != -1 {
+		t.Fatal("手动模型未删除")
+	}
+}
+
+func TestVerifyModelReturnsReplyAndLatency(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer sk" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer fake.Close()
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	if _, err := db.Exec(`INSERT INTO ai_providers(id,name,baseUrl,apiKey) VALUES('p','P',?,'sk'); INSERT INTO ai_models(providerId,id,name,manual) VALUES('p','m','m',1)`, fake.URL+"/v1"); err != nil {
+		t.Fatal(err)
+	}
+	w := do(h, "POST", "/api/ai/providers/p/models/verify", `{"id":"m","capability":"chat"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"reply":"ok"`) || !strings.Contains(w.Body.String(), `"latencyMs":`) || !strings.Contains(w.Body.String(), `"value":"supported"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	_, _ = db.Exec("UPDATE ai_providers SET apiKey='bad'")
+	if w := do(h, "POST", "/api/ai/providers/p/models/verify", `{"id":"m","capability":"chat"}`); w.Code != 502 || !strings.Contains(w.Body.String(), "鉴权失败") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+// 假供应商：用户要“找猫”且尚无工具结果时返回 search_posts 工具调用，否则流式回复文本。
+func fakeAgentProvider(t *testing.T, bodies *[]string, mu *sync.Mutex) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		*bodies = append(*bodies, string(b))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		frames := []string{`{"choices":[{"delta":{"content":"完成"}}]}`, `{"choices":[{"delta":{},"finish_reason":"stop"}]}`}
+		if strings.Contains(string(b), "找猫") && !strings.Contains(string(b), `"role":"tool"`) {
+			frames = []string{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search_posts","arguments":"{\"tags\":\"cat\"}"}}]}}]}`,
+				`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`}
+		}
+		for _, f := range append(frames, "[DONE]") {
+			_, _ = io.WriteString(w, "data: "+f+"\n\n")
+		}
+	}))
+}
+
+func waitRun(t *testing.T, h http.Handler, cid string) M {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		var snap M
+		_ = json.Unmarshal(do(h, "GET", "/api/profiles/default/conversations/"+cid, "").Body.Bytes(), &snap)
+		runs, _ := snap["runs"].([]any)
+		if len(runs) > 0 {
+			if st := str(runs[len(runs)-1].(map[string]any)["status"]); st != "pending" && st != "running" {
+				return snap
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("任务未结束")
+	return nil
+}
+
+func TestConversationAgentFlowIsolationAndDelete(t *testing.T) {
+	var bodies []string
+	var mu sync.Mutex
+	fake := fakeAgentProvider(t, &bodies, &mu)
+	defer fake.Close()
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "sqlite"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ai_providers(id,name,baseUrl,apiKey) VALUES('p','P',?,''); INSERT INTO ai_models(providerId,id,name,manual) VALUES('p','m','m',1)`, fake.URL+"/v1"); err != nil {
+		t.Fatal(err)
+	}
+	do(h, "PUT", "/api/profiles/default/chat", `{"providerId":"p","modelId":"m"}`)
+	newConv := func() string {
+		var out struct{ Conversation M }
+		w := do(h, "POST", "/api/profiles/default/conversations", "")
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		if w.Code != 201 {
+			t.Fatal(w.Body.String())
+		}
+		return str(out.Conversation["id"])
+	}
+	a, b := newConv(), newConv()
+	if w := do(h, "POST", "/api/profiles/default/conversations/"+a+"/runs", `{"text":"帮我找猫的图片","requestId":"r1"}`); w.Code != 201 {
+		t.Fatal(w.Body.String())
+	}
+	snap := waitRun(t, h, a)
+	if calls, _ := snap["calls"].([]any); len(calls) != 1 || str(calls[0].(map[string]any)["name"]) != "search_posts" {
+		t.Fatal("工具未调用", snap["calls"])
+	}
+	if s := str(snap["conversation"].(map[string]any)["title"]); s != "帮我找猫的图片" {
+		t.Fatal("标题", s)
+	}
+	if !strings.Contains(fmt.Sprint(snap["messages"]), "完成") {
+		t.Fatal("缺少最终回复", snap["messages"])
+	}
+	// B 的上下文不应包含 A 的消息
+	do(h, "POST", "/api/profiles/default/conversations/"+b+"/runs", `{"text":"你好","requestId":"r2"}`)
+	waitRun(t, h, b)
+	mu.Lock()
+	last := bodies[len(bodies)-1]
+	mu.Unlock()
+	if strings.Contains(last, "找猫") || !strings.Contains(last, "你好") {
+		t.Fatal("会话串话", last)
+	}
+	// 其他会话的 run 不能通过本会话路径访问
+	var runA string
+	_ = db.QueryRow("SELECT id FROM ai_runs WHERE conversationId=?", a).Scan(&runA)
+	if w := do(h, "POST", "/api/profiles/default/conversations/"+b+"/runs/"+runA+"/retry", ""); w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+	if w := do(h, "GET", "/api/profiles/default/conversations", ""); !strings.Contains(w.Body.String(), `"status":"completed"`) {
+		t.Fatal(w.Body.String())
+	}
+	if w := do(h, "PATCH", "/api/profiles/default/conversations/"+a, `{"title":"  猫猫  "}`); !strings.Contains(w.Body.String(), `"title":"猫猫"`) {
+		t.Fatal(w.Body.String())
+	}
+	if w := do(h, "DELETE", "/api/profiles/default/conversations/"+a, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	var n int
+	_ = db.QueryRow("SELECT COUNT(*) FROM ai_messages WHERE runId=?", runA).Scan(&n)
+	if n != 0 || do(h, "GET", "/api/profiles/default/conversations/"+a, "").Code != 404 {
+		t.Fatal("会话未删除干净", n)
+	}
+}
+
+func TestMigrateLegacyRunsIntoConversation(t *testing.T) {
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ai_runs(id,profileId,requestId,status,providerId,modelId,providerName,modelName) VALUES('r','default','q','completed','p','m','P','M')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateConversations(db); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := db.QueryRow("SELECT c.title FROM ai_conversations c JOIN ai_runs r ON r.conversationId=c.id WHERE r.id='r'").Scan(&title); err != nil || title != "此前的对话" {
+		t.Fatal(title, err)
 	}
 }

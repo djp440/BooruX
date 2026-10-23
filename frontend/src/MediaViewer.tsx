@@ -1,26 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation, useNavigate } from 'react-router';
 import { originalMediaURL, postSource } from './feed';
 import type { Post } from './feed';
-import { usePageSession } from './page-session';
+import { useHistoryLayer } from './history-layer';
 import { Icon } from './icons';
 
 // 全屏媒体查看器：原生 <dialog> 提供焦点限制、Esc 与焦点归还；挂到 body 以避开卡片的 content-visibility。
 // 打开时压入一条历史记录（带 sessionId 以复用当前页面会话），后退手势只关闭查看器。
 export default function MediaViewer({ posts, start, onClose }: { posts: Post[]; start: number; onClose: () => void }) {
-  const { page } = usePageSession();
-  const location = useLocation();
-  const navigate = useNavigate();
   const dialog = useRef<HTMLDialogElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const pushedKey = useRef<string | null>(null);
-  const closing = useRef(false);
   const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
   const zoomCenter = useRef<{ x: number; y: number } | null>(null);
-  const [token] = useState(() => Math.random().toString(36).slice(2));
   const [index, setIndex] = useState(start);
   const [zoomed, setZoomed] = useState(false);
   const current = posts[index];
@@ -34,25 +27,7 @@ export default function MediaViewer({ posts, start, onClose }: { posts: Post[]; 
     return () => element.close();
   }, [start]);
 
-  // 延迟压栈：StrictMode 的首次挂载会被清理取消，避免重复写入历史。
-  useEffect(() => {
-    const timer = window.setTimeout(() => navigate(location.pathname + location.search, { state: { ...location.state, sessionId: page.id, viewer: token } }));
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (pushedKey.current === null) {
-      if (location.state?.viewer === token) pushedKey.current = location.key;
-    } else if (location.key !== pushedKey.current) onClose();
-  }, [location.key, location.state, onClose, token]);
-
-  const close = () => {
-    if (closing.current) return;
-    closing.current = true;
-    if (pushedKey.current) navigate(-1);
-    else onClose();
-  };
+  const close = useHistoryLayer(onClose);
 
   useEffect(() => {
     setZoomed(false);

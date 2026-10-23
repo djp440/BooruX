@@ -81,6 +81,7 @@ func (s *server) aiRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("DELETE /api/ai/providers/{id}", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = s.db.Exec("DELETE FROM ai_providers WHERE id=?", r.PathValue("id"))
+		_, _ = s.db.Exec("UPDATE ai_chats SET providerId=NULL,modelId=NULL WHERE providerId=?", r.PathValue("id"))
 		writeJSON(w, 200, M{"success": true})
 	})
 	mux.HandleFunc("POST /api/ai/providers/{id}/models/refresh", func(w http.ResponseWriter, r *http.Request) {
@@ -155,8 +156,8 @@ func (s *server) aiRoutes(mux *http.ServeMux) {
 			}
 			return *p
 		}
-		_, err := s.db.Exec(`INSERT INTO ai_models(providerId,id,name,manual,chat,tools) VALUES(?,?,?,1,?,?)
-      ON CONFLICT(providerId,id) DO UPDATE SET name=COALESCE(?,name),chat=COALESCE(?,chat),tools=COALESCE(?,tools)`,
+		_, err := s.db.Exec(`INSERT INTO ai_models(providerId,id,name,manual,available,chat,tools) VALUES(?,?,?,1,0,?,?)
+      ON CONFLICT(providerId,id) DO UPDATE SET manual=1,name=COALESCE(?,name),chat=COALESCE(?,chat),tools=COALESCE(?,tools)`,
 			pid, id, nm, def(chat, "unknown"), def(tools, "unknown"), arg(name), arg(chat), arg(tools))
 		if err != nil {
 			bad()
@@ -172,8 +173,12 @@ func (s *server) aiRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, M{"models": listModels(s.db, pid)})
 	})
 	mux.HandleFunc("DELETE /api/ai/providers/{id}/models/{modelId}", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = s.db.Exec("DELETE FROM ai_models WHERE providerId=? AND id=?", r.PathValue("id"), r.PathValue("modelId"))
-		writeJSON(w, 200, M{"success": true})
+		pid, mid := r.PathValue("id"), r.PathValue("modelId")
+		// 拉取到的模型移除后退回候选列表，手动添加且不在列表中的模型才真正删除
+		_, _ = s.db.Exec("UPDATE ai_models SET manual=0 WHERE providerId=? AND id=? AND available=1", pid, mid)
+		_, _ = s.db.Exec("DELETE FROM ai_models WHERE providerId=? AND id=? AND manual=1", pid, mid)
+		_, _ = s.db.Exec("UPDATE ai_chats SET providerId=NULL,modelId=NULL WHERE providerId=? AND modelId=?", pid, mid)
+		writeJSON(w, 200, M{"models": listModels(s.db, pid)})
 	})
 	mux.HandleFunc("POST /api/ai/providers/{id}/models/verify", s.verifyModel)
 
@@ -208,6 +213,7 @@ func (s *server) verifyModel(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+	started := time.Now()
 	reply, err := completeWith(ctx, cfg, id, []ChatMessage{{Role: "user", Content: text}}, tools, func(string, string) {}, opts)
 	if err != nil {
 		jerr(w, 502, err.Error())
@@ -236,7 +242,9 @@ func (s *server) verifyModel(w http.ResponseWriter, r *http.Request) {
 		// capab 仅为 chat/tools，安全拼接列名
 		_, _ = s.db.Exec("UPDATE ai_models SET "+capab+"=? WHERE providerId=? AND id=? AND "+capab+"=?", value, cfg.ID, id, old)
 	}
-	out := M{"capability": capab, "value": value}
+	// 回复截取前 100 字符，供设置页展示连通性测试结果
+	preview := []rune(strings.TrimSpace(reply.Content))
+	out := M{"capability": capab, "value": value, "latencyMs": time.Since(started).Milliseconds(), "reply": string(preview[:min(100, len(preview))])}
 	if !supported {
 		out["error"] = "供应商未完成能力测试，状态仍为未验证"
 	}
@@ -261,10 +269,20 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 			fn(w, r, pid)
 		}
 	}
-	run := func(fn func(w http.ResponseWriter, r *http.Request, pid, id string)) http.HandlerFunc {
+	conv := func(fn func(w http.ResponseWriter, r *http.Request, pid, cid string)) http.HandlerFunc {
 		return chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+			cid := r.PathValue("cid")
+			if _, err := rt.getConversation(pid, cid); err != nil {
+				jerr(w, 404, "会话不存在")
+				return
+			}
+			fn(w, r, pid, cid)
+		})
+	}
+	run := func(fn func(w http.ResponseWriter, r *http.Request, pid, id string)) http.HandlerFunc {
+		return conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
 			id := r.PathValue("id")
-			if _, err := rt.getRun(pid, id); err != nil {
+			if run, err := rt.getRun(pid, id); err != nil || str(run["conversationId"]) != cid {
 				jerr(w, 404, "任务不存在")
 				return
 			}
@@ -313,20 +331,55 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 			e := str(v)
 			effort = &e
 		}
+		// providerId 与 modelId 均为空表示清除模型选择（主模型改回未设置）
+		if str(b["providerId"]) == "" && str(b["modelId"]) == "" {
+			_, _ = s.db.Exec("UPDATE ai_chats SET providerId=NULL,modelId=NULL WHERE profileId=?", pid)
+			writeJSON(w, 200, rt.chat(pid))
+			return
+		}
 		if err := rt.selectModel(pid, str(b["providerId"]), str(b["modelId"]), effort); err != nil {
 			jerr(w, 400, err.Error())
 			return
 		}
 		writeJSON(w, 200, rt.chat(pid))
 	}))
-	mux.HandleFunc("DELETE "+base, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
-		if err := rt.clear(pid); err != nil {
+	const convs = "/api/profiles/{profileId}/conversations"
+	mux.HandleFunc("GET "+convs, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		writeJSON(w, 200, M{"conversations": rt.listConversations(pid)})
+	}))
+	mux.HandleFunc("POST "+convs, chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+		c, err := rt.createConversation(pid)
+		if err != nil {
+			s.fail500(w, "AI_CONVERSATION", "Failed to create conversation", err)
+			return
+		}
+		writeJSON(w, 201, M{"conversation": c})
+	}))
+	mux.HandleFunc("GET "+convs+"/{cid}", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
+		snap, err := rt.conversation(pid, cid)
+		if err != nil {
+			jerr(w, 404, err.Error())
+			return
+		}
+		writeJSON(w, 200, snap)
+	}))
+	mux.HandleFunc("PATCH "+convs+"/{cid}", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
+		title, _ := readBody(r)["title"].(string)
+		c, err := rt.renameConversation(pid, cid, title)
+		if err != nil {
+			jerr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, M{"conversation": c})
+	}))
+	mux.HandleFunc("DELETE "+convs+"/{cid}", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
+		if err := rt.deleteConversation(pid, cid); err != nil {
 			jerr(w, 409, err.Error())
 			return
 		}
 		writeJSON(w, 200, M{"success": true})
 	}))
-	mux.HandleFunc("POST "+base+"/runs", chat(func(w http.ResponseWriter, r *http.Request, pid string) {
+	mux.HandleFunc("POST "+convs+"/{cid}/runs", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
 		b := readBody(r)
 		var ids []string
 		if arr, ok := b["attachmentIds"].([]any); ok {
@@ -347,14 +400,14 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 			}
 		}
 		reqID, _ := b["requestId"].(string)
-		run, err := rt.create(pid, reqID, text, ids)
+		run, err := rt.create(pid, cid, reqID, text, ids)
 		if err != nil {
 			jerr(w, 409, err.Error())
 			return
 		}
 		writeJSON(w, 201, M{"run": run})
 	}))
-	mux.HandleFunc("GET "+base+"/runs/{id}/events", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
+	mux.HandleFunc("GET "+convs+"/{cid}/runs/{id}/events", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
 		after, err := strconv.ParseInt(orDefault(r.URL.Query().Get("after"), "0"), 10, 64)
 		if err != nil || after < 0 {
 			jerr(w, 409, "无法订阅此任务")
@@ -364,11 +417,11 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 			jerr(w, 409, "无法订阅此任务")
 		}
 	}))
-	mux.HandleFunc("POST "+base+"/runs/{id}/cancel", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
+	mux.HandleFunc("POST "+convs+"/{cid}/runs/{id}/cancel", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
 		rt.cancel(pid, id, "已停止")
 		writeJSON(w, 200, M{"success": true})
 	}))
-	mux.HandleFunc("POST "+base+"/runs/{id}/retry", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
+	mux.HandleFunc("POST "+convs+"/{cid}/runs/{id}/retry", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
 		out, err := rt.retry(pid, id)
 		if err != nil {
 			jerr(w, 409, err.Error())

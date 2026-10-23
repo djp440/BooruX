@@ -7,3 +7,4 @@
 - 运行数据与密钥不得提交；沿用 `.gitignore` 中的保护规则。
 - Issues 记录在 GitHub Issues（`djp440/BooruX`），使用 `gh` CLI。
 - 使用五个 triage 标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。
+- 编写前端时，保持`精致、易用，并给人舒适的视觉反馈和交互体验`规则

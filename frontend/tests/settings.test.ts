@@ -4,12 +4,37 @@ import { resolve } from 'node:path';
 import React, { act } from 'react';
 import { RATING_OPTIONS, THEME_OPTIONS, THEME_STORAGE_KEY, applyTheme, isRating, isTheme, normalizeFilterTag, readCachedTheme, readTagFilter } from '../src/rating-settings';
 import { PageSessions } from '../src/page-session';
+import { addedModels, candidateModels, mainModelOptions } from '../src/ai-providers';
+import type { Provider } from '../src/ai-providers';
 import { clearPostsCache, postsCacheSize, readPostCache, writePostCache } from '../src/post-cache';
 
 function storage() {
   let raw: string | null = null;
   return { getItem: () => raw, setItem: (_key: string, value: string) => { raw = value; } };
 }
+
+describe('AI 供应商模型', () => {
+  const provider = (id: string, models: [string, number, number][]): Provider => ({
+    id, name: id.toUpperCase(), baseUrl: 'http://x', protocol: 'openai', hasKey: false, discoveryError: null,
+    models: models.map(([model, manual, available]) => ({ id: model, name: model, manual, available })),
+  });
+  const a = provider('a', [['gpt-4o', 1, 1], ['gpt-4o-mini', 0, 1], ['old', 0, 0], ['custom', 1, 0]]);
+
+  test('manual 区分已加入与候选，下架的候选不显示', () => {
+    expect(addedModels(a).map(m => m.id)).toEqual(['gpt-4o', 'custom']);
+    expect(candidateModels(a, '').map(m => m.id)).toEqual(['gpt-4o-mini']);
+    expect(candidateModels(a, 'MINI').map(m => m.id)).toEqual(['gpt-4o-mini']);
+    expect(candidateModels(a, 'claude')).toEqual([]);
+  });
+
+  test('主模型选项汇总所有供应商已加入的模型', () => {
+    expect(mainModelOptions([a, provider('b', [['m', 1, 1]])])).toEqual([
+      { providerId: 'a', modelId: 'gpt-4o', label: 'A / gpt-4o' },
+      { providerId: 'a', modelId: 'custom', label: 'A / custom' },
+      { providerId: 'b', modelId: 'm', label: 'B / m' },
+    ]);
+  });
+});
 
 describe('标签屏蔽与本地数据', () => {
   test('屏蔽标签按后端规则规整：去 #、小写、空白转下划线、限长 100', () => {

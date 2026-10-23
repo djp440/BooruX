@@ -51,6 +51,11 @@ func initAiTables(db *sql.DB) error {
       available INTEGER NOT NULL DEFAULT 1, chat TEXT NOT NULL DEFAULT 'unknown',
       tools TEXT NOT NULL DEFAULT 'unknown', PRIMARY KEY(providerId,id)
     );
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id TEXT PRIMARY KEY, profileId TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT '', createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ai_conversations_profile ON ai_conversations(profileId,updatedAt);
     CREATE TABLE IF NOT EXISTS ai_chats (
       profileId TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
       providerId TEXT, modelId TEXT
@@ -61,7 +66,6 @@ func initAiTables(db *sql.DB) error {
       providerName TEXT NOT NULL, modelName TEXT NOT NULL, error TEXT, omitted INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(profileId,requestId)
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS ai_one_active_run ON ai_runs(profileId) WHERE status IN ('pending','running');
     CREATE TABLE IF NOT EXISTS ai_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT, profileId TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
       runId TEXT NOT NULL REFERENCES ai_runs(id) ON DELETE CASCADE,
@@ -104,7 +108,32 @@ func initAiTables(db *sql.DB) error {
 	migrate("ai_runs", "reasoningSummary", "INTEGER NOT NULL DEFAULT 1")
 	migrate("ai_runs", "systemPrompt", "TEXT NOT NULL DEFAULT ''")
 	migrate("ai_events", "attempt", "INTEGER NOT NULL DEFAULT 1")
+	migrate("ai_runs", "conversationId", "TEXT REFERENCES ai_conversations(id) ON DELETE CASCADE")
+	if err := migrateConversations(db); err != nil {
+		return err
+	}
 	_, err = db.Exec("UPDATE ai_runs SET status='interrupted',error='服务重启，任务已中断' WHERE status IN ('pending','running')")
+	return err
+}
+
+// migrateConversations 把引入多会话前的对话归入每个 profile 的「此前的对话」，
+// 并把“同时只有一个运行中任务”的约束从 profile 改为会话。
+func migrateConversations(db *sql.DB) error {
+	rows, err := queryMaps(db, "SELECT DISTINCT profileId FROM ai_runs WHERE conversationId IS NULL")
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		id, now := newUUID(), nowISO()
+		if _, err := db.Exec("INSERT INTO ai_conversations(id,profileId,title,createdAt,updatedAt) VALUES(?,?,?,?,?)", id, r["profileId"], "此前的对话", now, now); err != nil {
+			return err
+		}
+		if _, err := db.Exec("UPDATE ai_runs SET conversationId=? WHERE profileId=? AND conversationId IS NULL", id, r["profileId"]); err != nil {
+			return err
+		}
+	}
+	_, err = db.Exec(`DROP INDEX IF EXISTS ai_one_active_run;
+    CREATE UNIQUE INDEX IF NOT EXISTS ai_one_active_run_conversation ON ai_runs(conversationId) WHERE status IN ('pending','running');`)
 	return err
 }
 

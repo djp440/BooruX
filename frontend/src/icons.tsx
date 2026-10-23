@@ -14,6 +14,17 @@ const PATHS = {
   alert: 'M12 8v4m0 4h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0',
   image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm16 12-5-5L5 21M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3',
   history: 'M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5m4-1v5l4 2',
+  sparkle: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9ZM19 3v4m-2-2h4M5 17v4m-2-2h4',
+  send: 'M12 19V5m-7 7 7-7 7 7',
+  stop: 'M7 7h10v10H7Z',
+  plus: 'M12 5v14M5 12h14',
+  attach: 'm21 12-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6L15.5 7',
+  edit: 'M12 20h9M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  trash: 'M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 5v6m4-6v6',
+  check: 'M20 6 9 17l-5-5',
+  chevron: 'm6 9 6 6 6-6',
+  copy: 'M9 9h11v11H9Zm-4 6H4V4h11v1',
+  retry: 'M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5',
 };
 
 export type IconName = keyof typeof PATHS;

@@ -7,12 +7,14 @@ import { useBookmarks } from './Bookmarks';
 import { clearPostsCache, postsCacheSize } from './post-cache';
 import { clearSearchHistory, readSearchHistory } from './search';
 import { Icon } from './icons';
+import ProviderSettings from './ProviderSettings';
 
 type Scope = 'theme' | 'rating' | 'tags' | 'history' | 'cache';
 
 const GROUPS = [
   { id: 'settings-appearance', label: '外观' },
   { id: 'settings-content', label: '内容' },
+  { id: 'settings-providers', label: '供应商' },
   { id: 'settings-data', label: '数据与存储' },
   { id: 'settings-about', label: '关于' },
 ] as const;
@@ -52,7 +54,8 @@ export default function Settings() {
   const [historyCount, setHistoryCount] = useState(() => readSearchHistory().length);
   const [cacheSize, setCacheSize] = useState(() => postsCacheSize());
   const [confirming, setConfirming] = useState<'history' | 'cache' | null>(null);
-  const [tab, setTab] = useState(0);
+  // 支持 /settings?tab=settings-providers 这类直达链接。
+  const [tab, setTab] = useState(() => Math.max(0, GROUPS.findIndex(group => group.id === new URLSearchParams(window.location?.search).get('tab'))));
   const tabsRef = useRef<HTMLDivElement>(null);
 
   const selectTab = (next: number, focus = false) => {
@@ -308,6 +311,10 @@ export default function Settings() {
       </Group>
 
       <Group index={2} active={tab}>
+        <ProviderSettings />
+      </Group>
+
+      <Group index={3} active={tab}>
         {([
           ['history', '搜索历史', historyCount ? `已保存 ${historyCount} 条最近搜索` : '暂无搜索历史', historyCount === 0, '清空'],
           ['cache', '本地帖子缓存', cacheSize ? `约 ${Math.max(1, Math.round(cacheSize / 1024))} KB，用于加快列表打开速度` : '暂无缓存', cacheSize === 0, '清除'],
@@ -328,7 +335,7 @@ export default function Settings() {
         </div>)}
       </Group>
 
-      <Group index={3} active={tab}>
+      <Group index={4} active={tab}>
         <div className="setting-item about">
           <div className="about-brand">
             <span className="brand-mark" aria-hidden="true">B</span>
