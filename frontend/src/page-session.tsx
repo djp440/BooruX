@@ -3,11 +3,21 @@ import type { ReactNode } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import type { PostsResponse } from './feed';
 import type { CommentsState, PostDetailData } from './comments';
+import type { ChatState } from './chat-api';
 
 export type Area = 'home' | 'favorites';
 export const areaForPath = (path: string): Area => path === '/favorites' || path.startsWith('/favorites/') ? 'favorites' : 'home';
 export const listPath = (area: Area) => area === 'home' ? '/' : '/favorites';
 export type Position = { y: number; anchors: { id: string; offset: number }[] };
+// 对话页离开时留下的现场：会话快照、输入草稿、引用与是否跟随到底部；回来时直接还原，再后台刷新。
+export type ChatView = {
+  state: ChatState | null;
+  text: string;
+  quotes: { id: string; url: string }[];
+  drafts: { key: string; url: string; id?: string; error?: string }[];
+  follow: boolean;
+};
+export const isChatPath = (path: string) => path === '/chat' || path.startsWith('/chat/');
 export type PageSession = {
   id: string;
   path: string;
@@ -18,6 +28,7 @@ export type PageSession = {
   feedQuery?: string;
   detail?: PostDetailData;
   comments?: CommentsState;
+  chat?: ChatView;
 };
 
 export class PageSessions {
@@ -25,6 +36,7 @@ export class PageSessions {
   entries: { key: string; sessionId: string }[] = [];
   index = -1;
   lastVisit: Partial<Record<Area, PageSession>> = {};
+  lastChat?: PageSession;
   sequence = 0;
 
   visit(key: string, path: string, type: string, sessionId?: string): PageSession {
@@ -39,6 +51,7 @@ export class PageSessions {
     let page = this.pages.get(id);
     if (!page) { page = { id, path, position: { y: 0, anchors: [] } }; this.pages.set(id, page); }
     if (path === '/' || path.startsWith('/posts/') || path === '/favorites' || path.startsWith('/favorites/posts/')) this.lastVisit[areaForPath(path)] = page;
+    if (isChatPath(path)) this.lastChat = page;
     this.prune();
     return page;
   }
@@ -74,6 +87,7 @@ export class PageSessions {
     for (const session of Object.values(this.lastVisit)) {
       if (session?.id) reachable.add(session.id);
     }
+    if (this.lastChat) reachable.add(this.lastChat.id);
     let expanded = true;
     while (expanded) {
       expanded = false;
@@ -211,6 +225,7 @@ const SessionContext = createContext<{
   openArtist: (artist: string) => void;
   back: () => void;
   goArea: (area: Area) => void;
+  goChat: () => void;
   invalidate: () => void;
 } | null>(null);
 
@@ -297,6 +312,13 @@ export function PageSessionProvider({ children }: { children: ReactNode }) {
       if (res === 'scroll_to_top') {
         scrollingToTopRef.current = true;
       }
+    },
+    // 从其他页面回到 AI 助手：还原上次的对话页（同一会话、草稿与滚动位置）；已在对话页时点击则开始新对话。
+    goChat: () => {
+      save();
+      if (location.pathname === '/chat') return;
+      const last = isChatPath(location.pathname) ? undefined : store.lastChat;
+      navigate(last?.path || '/chat', { state: last ? { sessionId: last.id } : null });
     },
     invalidate: () => store.invalidateContent(),
   }}>{children}</SessionContext.Provider>;

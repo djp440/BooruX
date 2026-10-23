@@ -744,3 +744,43 @@ func TestMigrateLegacyRunsIntoConversation(t *testing.T) {
 		t.Fatal(title, err)
 	}
 }
+
+func TestRunQuotesPosts(t *testing.T) {
+	var bodies []string
+	var mu sync.Mutex
+	fake := fakeAgentProvider(t, &bodies, &mu)
+	defer fake.Close()
+	db, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := withMiddleware((&server{db: db, media: newMediaCache(db, t.TempDir())}).routes())
+	if _, err := setProfileSettings(db, defaultProfileID, M{"dataSource": "sqlite"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ai_providers(id,name,baseUrl,apiKey) VALUES('p','P',?,''); INSERT INTO ai_models(providerId,id,name,manual) VALUES('p','m','m',1);
+      INSERT INTO posts(id,title,artist,image_url,preview_url,rating,created_at) VALUES('q1','t','a','http://x/i.jpg','http://x/p.jpg','general','2026-01-01')`, fake.URL+"/v1"); err != nil {
+		t.Fatal(err)
+	}
+	do(h, "PUT", "/api/profiles/default/chat", `{"providerId":"p","modelId":"m"}`)
+	var out struct{ Conversation M }
+	_ = json.Unmarshal(do(h, "POST", "/api/profiles/default/conversations", "").Body.Bytes(), &out)
+	cid := str(out.Conversation["id"])
+	runs := "/api/profiles/default/conversations/" + cid + "/runs"
+	if w := do(h, "POST", runs, `{"text":"","postIds":["missing"],"requestId":"r0"}`); w.Code != 409 {
+		t.Fatal("不存在的作品应被拒绝", w.Code)
+	}
+	if w := do(h, "POST", runs, `{"text":"","postIds":["q1"],"requestId":"r1"}`); w.Code != 201 {
+		t.Fatal(w.Body.String())
+	}
+	snap := waitRun(t, h, cid)
+	mu.Lock()
+	last := bodies[len(bodies)-1]
+	mu.Unlock()
+	if !strings.Contains(last, "引用作品：q1") {
+		t.Fatal("模型未收到引用", last)
+	}
+	if !strings.Contains(fmt.Sprint(snap["messages"]), "http://x/p.jpg") {
+		t.Fatal("消息缺少引用缩略图", snap["messages"])
+	}
+}

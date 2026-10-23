@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import { isActive } from './chat-api';
+import { exportURL, isActive } from './chat-api';
 import type { Conversation } from './chat-api';
 import { relativeTime } from './feed';
 import { useHistoryLayer } from './history-layer';
@@ -12,6 +12,7 @@ type Props = {
   onSelect: (id: string | null) => void;
   onRename: (id: string, title: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onDuplicate: (id: string) => Promise<string>; // 返回新会话 id
   onClose: () => void;
   // 页头的切换按钮通过它关闭下拉，以便同时回退历史记录。
   closeRef: MutableRefObject<(() => void) | null>;
@@ -19,7 +20,7 @@ type Props = {
 
 // 会话列表：从页头下方展开的下拉抽屉，限定在内容列内；后退手势、Esc、点击遮罩或再次点击标题都会收起。
 // 选择会话时先回退下拉的历史记录再跳转。
-export default function ConversationDrawer({ conversations, currentId, onSelect, onRename, onDelete, onClose, closeRef }: Props) {
+export default function ConversationDrawer({ conversations, currentId, onSelect, onRename, onDelete, onDuplicate, onClose, closeRef }: Props) {
   const panel = useRef<HTMLDivElement>(null);
   const after = useRef<(() => void) | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -95,6 +96,11 @@ export default function ConversationDrawer({ conversations, currentId, onSelect,
                 onClick={() => void act(`delete:${item.id}`, async () => { await onDelete(item.id); setConfirming(null); })}>确认删除</button>
             </div> : <div className="chat-drawer-actions">
               <button type="button" className="icon-button" aria-label={`重命名 ${item.title}`} title="重命名" onClick={() => { setEditing(item.id); setDraft(item.title); setConfirming(null); }}><Icon name="edit" /></button>
+              <button type="button" className="icon-button" aria-label={`复制 ${item.title}`} title="复制会话" disabled={busy !== ''}
+                onClick={() => void act(`duplicate:${item.id}`, async () => pick(await onDuplicate(item.id)))}>
+                {busy === `duplicate:${item.id}` ? <span className="spinner" /> : <Icon name="copy" />}
+              </button>
+              <a className="icon-button" href={exportURL(item.id)} download aria-label={`导出 ${item.title} 为 Markdown`} title="导出为 Markdown"><Icon name="download" /></a>
               <button type="button" className="icon-button" aria-label={`删除 ${item.title}`} title="删除" onClick={() => { setConfirming(item.id); setEditing(null); }}><Icon name="trash" /></button>
             </div>}
           </>}

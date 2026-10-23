@@ -1,7 +1,7 @@
 // AI 对话：对接 server-go/ai_routes.go 的会话接口；事件流为 SSE，按事件 id 去重并续传。
 import type { Post } from './feed';
 
-export type ChatBlock = { type: 'text' | 'reasoning' | 'image' | 'tool'; text?: string; key?: string; attachmentId?: string; callId?: string };
+export type ChatBlock = { type: 'text' | 'reasoning' | 'image' | 'tool' | 'post'; text?: string; key?: string; attachmentId?: string; callId?: string };
 export type ChatMessage = {
   id: number; runId: string; status: string; role: 'user' | 'assistant' | 'tool' | 'system'; content?: string; blocks: ChatBlock[];
   tool_calls?: { id: string; function: { name: string; arguments: string } }[];
@@ -35,10 +35,16 @@ export const listConversations = () => request<{ conversations: Conversation[] }
 export const createConversation = () => request<{ conversation: Conversation }>(conversations, 'POST').then(data => data.conversation);
 export const renameConversation = (id: string, title: string) => request<{ conversation: Conversation }>(conv(id), 'PATCH', { title }).then(data => data.conversation);
 export const deleteConversation = (id: string) => request(conv(id), 'DELETE');
-export const startRun = (id: string, text: string, attachmentIds: string[]) =>
-  request<{ run: ChatRun }>(`${conv(id)}/runs`, 'POST', { text, attachmentIds, requestId: crypto.randomUUID() }).then(data => data.run);
+export const startRun = (id: string, text: string, attachmentIds: string[], postIds: string[]) =>
+  request<{ run: ChatRun }>(`${conv(id)}/runs`, 'POST', { text, attachmentIds, postIds, requestId: crypto.randomUUID() }).then(data => data.run);
 export const cancelRun = (id: string, runId: string) => request(`${conv(id)}/runs/${encodeURIComponent(runId)}/cancel`, 'POST');
-export const retryRun = (id: string, runId: string) => request<{ run: ChatRun }>(`${conv(id)}/runs/${encodeURIComponent(runId)}/retry`, 'POST').then(data => data.run);
+// 失败/停止的最后一轮续跑；最后一轮已完成或带 text 时，丢弃本轮回复并用当前模型重新生成（text 同时改写用户消息）。
+export const retryRun = (id: string, runId: string, text?: string) =>
+  request<{ run: ChatRun }>(`${conv(id)}/runs/${encodeURIComponent(runId)}/retry`, 'POST', text === undefined ? undefined : { text }).then(data => data.run);
+// 复制会话；指定 runId 时只保留到该轮（分支）。
+export const forkConversation = (id: string, runId?: string) =>
+  request<{ conversation: Conversation }>(`${conv(id)}/fork`, 'POST', { runId: runId ?? '' }).then(data => data.conversation);
+export const exportURL = (id: string) => `${conv(id)}/export`;
 export const attachmentURL = (id: string) => `${PROFILE}/chat/attachments/${encodeURIComponent(id)}`;
 export const removeAttachment = (id: string) => request(attachmentURL(id), 'DELETE');
 
@@ -157,6 +163,7 @@ export function toolSummary(call: ToolCall): string {
   switch (call.name) {
     case 'search_posts': return `搜索作品${args.tags ? ` · ${args.tags}` : ''}${count(result.posts, '个结果')}`;
     case 'get_post': return `读取作品 ${args.id ?? ''}`.trim();
+    case 'view_post_image': return `查看图片 ${args.id ?? ''}`.trim();
     case 'list_bookmarks': return `查看收藏${count(result.posts, '个作品')}`;
     case 'search_tags': return `查询标签 · ${args.query ?? ''}${count(result.tags, '个标签')}`;
     case 'set_bookmark': return `${args.bookmarked === false ? '取消收藏' : '收藏'} ${args.id ?? ''}`.trim();

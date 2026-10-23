@@ -24,6 +24,8 @@ const PATHS = {
   check: 'M20 6 9 17l-5-5',
   chevron: 'm6 9 6 6 6-6',
   copy: 'M9 9h11v11H9Zm-4 6H4V4h11v1',
+  branch: 'M6 3v12m0 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm12-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 0a9 9 0 0 1-9 9',
+  download: 'M12 3v12m0 0-4-4m4 4 4-4M5 21h14',
   retry: 'M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5',
 };
 

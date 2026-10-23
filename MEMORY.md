@@ -1,5 +1,19 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
+## 2026-10-23 16:53 对话页切换页面后保持状态
+- 沿用 `page-session` 的做法（和 `PostFeed` 的 `page.feed` 一致）：对话页把现场写进当前 `PageSession.chat`（会话快照、草稿文字、图片草稿、引用、`follow`），重新挂载时按路由里的会话 id 校验后还原，不显示加载中，再后台 `getConversation` 刷新；滚动位置由 provider 已有的 `beginRestore` 恢复。`follow` 必须一并还原，否则刷新后的 `useLayoutEffect([state])` 会把页面拽到底部。
+- 侧边栏「AI 助手」以前固定跳 `/chat`，等于每次新开对话；现在 `goChat` 回到 `store.lastChat`（同 sessionId），已在对话页内再点才新开对话。`lastChat` 要在 `prune` 里算作可达。
+- 保存现场的 effect 要跳过「路由已变、状态未更新」的过渡渲染（`state.conversation.id !== conversationId`），否则会把上一个会话的快照写到新会话的页面会话里。上传中的图片草稿（无 id）不保存。
+- 浏览器自测：`playwright-cli` 自带浏览器，自己写 `.mjs` 时用 `chromium.launch({ channel: 'msedge' })`，import 路径要写成 `file:///` URL。
+
+## 2026-10-23 16:41 推理、作品引用、看图与会话操作
+- **数据库是单连接（`SetMaxOpenConns(1)`）：`withTx` 内只能用 `tx`**，调用 `rt.db`、`attachments.get` 之类会死锁，整个服务的请求都会卡住。`attachments.bind` 曾因此在带图发送时挂死，现已只走传入的 `querier`；先在事务外校验再进事务。新增涉及事务的代码（如 `fork`、`retry` 重置）都按这个写。
+- 作品引用：`POST …/runs` 的 `postIds` 以 `{type:"post", key:id, text:预览图}` 块存入用户消息；发给模型的 `Content` 末尾附 `[引用作品：ids]`（`quotedContent`），气泡只渲染 blocks。收藏意图校验 `explicitBookmarkIntent` 认这个后缀：目标 ID 在引用列表内（可多件）且正文说了「收藏/取消收藏」（排除「不要/别收藏」）才放行；一度写成「只引用 1 件才放行」，用户一次引用多件收藏时全部被拒，已修正。
+- 看图：工具 `view_post_image` 把缩略图存为本轮附件（`attachment` 字段由 `performCalls` 取出并绑定到 run），`buildContext` 把它们放在 tool 结果之后的一条 user 消息里（协议不允许 tool 消息带图）。每轮图片总数上限 4。
+- 重新生成/编辑重发都走 `POST …/runs/{id}/retry`：最后一轮已完成或带 `text` 时进入「重置」，丢弃本轮回复与工具调用，用**当前选中的模型和推理强度**重跑；失败/停止的重试仍沿用原模型续跑。分支/复制会话是 `POST …/conversations/{cid}/fork`（`ai_fork.go`），只复制已完成轮次，不复制事件，图片附件复制为新文件。
+- 复制到剪贴板要有 `execCommand` 回退：局域网 http 访问没有 Clipboard API。
+- 验证 UI 时，复制 `data/tikbooru.db*` 到临时目录，用 `PORT=48399 DB_PATH=…` 起新编译的服务，避免动用户的 48300 服务和真实数据，也不会触发真实模型请求。
+
 ## 2026-10-23 14:50 AI 对话页与会话层
 - 后端早已有完整的 agent 运行时（`ai_runtime.go` 的 `runLoop` + `ai_tools.go` 的 5 个工具 + SSE 事件回放）。这次只补了会话层：新增 `ai_conversations` 表，给 `ai_runs` 加 `conversationId` 列，消息、工具调用、事件都经 runId 归属会话，删除会话即级联删除。`buildContext` 按 `run.conversationId` 取消息，这是会话隔离的关键。“只能有一个运行中任务”的唯一索引改为按会话（`ai_one_active_run_conversation`）。引入会话之前的旧 runs 由 `migrateConversations` 归入“此前的对话”。
 - 删除会话前要先删除这些 runs 绑定的附件文件：`ai_attachments.runId` 是 `ON DELETE SET NULL`，不先删文件会留下孤儿文件。

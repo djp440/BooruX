@@ -25,6 +25,7 @@ var aiTools = func() []ToolDefinition {
 		toolDef("search_posts", "搜索当前配置允许的作品；结果会作为媒体直接显示在对话中。", M{"tags": s, "limit": lim}),
 		toolDef("get_post", "读取指定作品并在对话中显示媒体。", M{"id": s}, "id"),
 		toolDef("list_bookmarks", "读取当前配置允许的收藏作品并在对话中显示媒体。", M{"limit": lim}),
+		toolDef("view_post_image", "查看作品的画面。仅当回答需要了解图片视觉内容时调用（如用户要求看图、描述或识别画面）；收藏、查标签、搜索等不依赖画面的操作不要调用。", M{"id": s}, "id"),
 		toolDef("search_tags", "查询当前配置允许的作品标签。", M{"query": s}, "query"),
 		toolDef("set_bookmark", "仅当用户当前明确要求对具体作品 ID 收藏或取消收藏时执行；目标不明请询问。", M{"id": s, "bookmarked": M{"type": "boolean"}}, "id", "bookmarked"),
 	}
@@ -113,7 +114,31 @@ func validateTool(name, raw string) (M, error) {
 	return args, nil
 }
 
+var negatedBookmarkRe = regexp.MustCompile(`(?i)(?:不要|别|不用|无需|不想|不能|不)\s*(?:再)?\s*(?:收藏|bookmark)`)
+
+// quotedBookmarkIntent 判断引用作品时的正文是否表达了收藏（或取消收藏）操作；目标由引用列表限定。
+func quotedBookmarkIntent(body string, bookmarked bool) bool {
+	body = strings.ToLower(body)
+	if negatedBookmarkRe.MatchString(body) {
+		return false
+	}
+	cancel := false
+	for _, k := range []string{"取消收藏", "移除收藏", "删除收藏", "unbookmark"} {
+		cancel = cancel || strings.Contains(body, k)
+	}
+	return (strings.Contains(body, "收藏") || strings.Contains(body, "bookmark")) && cancel == !bookmarked
+}
+
 func explicitBookmarkIntent(text, id string, bookmarked bool) bool {
+	// 引用作品时正文末尾附「[引用作品：id、id…]」。目标 ID 在引用列表内（可多件），且正文表达了对应操作，即视为明确指定
+	if body, quoted, ok := strings.Cut(text, "\n\n[引用作品："); ok {
+		for _, q := range strings.Split(strings.TrimSuffix(quoted, "]"), "、") {
+			if q == id {
+				return quotedBookmarkIntent(body, bookmarked)
+			}
+		}
+		text = body
+	}
 	action := `(?:收藏|bookmark)`
 	if !bookmarked {
 		action = `(?:取消收藏|移除收藏|删除收藏|unbookmark)`
@@ -134,7 +159,7 @@ func executeTool(ctx context.Context, db *sql.DB, profileID, name string, args M
 		if name == "set_bookmark" {
 			want, _ := args["bookmarked"].(bool)
 			if !explicitBookmarkIntent(userText, str(post["id"]), want) {
-				return nil, errors.New("请用户明确指定作品 ID 及收藏或取消收藏操作")
+				return nil, errors.New("用户消息中没有对该作品明确的收藏/取消收藏指令：需要用户正文写明操作，且作品由用户引用或在正文给出 ID")
 			}
 			p := compactPost(post)
 			p["isBookmarked"] = want

@@ -25,7 +25,7 @@ function BookmarkToast() {
 
 export function Layout() {
   const { pathname } = useLocation();
-  const { store, save, goArea } = usePageSession();
+  const { store, save, goArea, goChat } = usePageSession();
   const settingsActive = pathname === '/settings';
   const chatActive = pathname === '/chat' || pathname.startsWith('/chat/');
   return (
@@ -40,7 +40,8 @@ export function Layout() {
             <Icon name={area === 'home' ? 'home' : 'bookmark'} /><span>{area === 'home' ? '首页' : '收藏'}</span>
           </Link>;
         })}
-        <Link to="/chat" className={chatActive ? 'active' : ''} aria-current={chatActive ? 'page' : undefined} onClick={save}>
+        <Link to={chatActive ? '/chat' : store.lastChat?.path || '/chat'} className={chatActive ? 'active' : ''} aria-current={chatActive ? 'page' : undefined}
+          onClick={event => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); goChat(); } }}>
           <Icon name="sparkle" /><span>AI 助手</span>
         </Link>
         <Link to="/settings" className={settingsActive ? 'active' : ''} aria-current={settingsActive ? 'page' : undefined} onClick={save}>
