@@ -154,6 +154,29 @@ describe('卡片手势无障碍、选区精准化与外链安全加固', () => {
       expect(html).toContain('aria-label="帖子媒体，共 2 项，可横向滚动"');
     });
 
+    test('作者链接：已知 Danbooru 作者且提供 onAuthor 时链接到作者页，否则为纯文本', () => {
+      const render = (post: Post, onAuthor?: (artist: string) => void) => renderToString(
+        React.createElement(BookmarkProvider, null,
+          React.createElement(PostCard, { id: post.id, posts: [post], onComments: () => {}, onAuthor })
+        )
+      );
+      const html = render(createPost('danbooru-1', { artist: 'sky_(artist)' }), () => {});
+      expect(html).toContain('<a class="post-author" href="/artists/sky_(artist)"');
+      expect(html).toContain('<a class="post-avatar" href="/artists/sky_(artist)"');
+      expect(render(createPost('danbooru-1', { artist: 'sky' }))).not.toContain('/artists/');
+      expect(render(createPost('danbooru-1', { artist: 'Unknown_Artist' }), () => {})).not.toContain('/artists/');
+      expect(render(createPost('yandere-1', { artist: 'sky' }), () => {})).not.toContain('/artists/');
+    });
+
+    test('图片入口：保留原图 href 供新标签页打开，无障碍名称为“查看大图”', () => {
+      const html = renderToString(
+        React.createElement(BookmarkProvider, null,
+          React.createElement(PostCard, { id: 'danbooru-1', posts: [createPost('danbooru-1')], onComments: () => {} })
+        )
+      );
+      expect(html).toMatch(/<a class="media-original" href="https:\/\/danbooru\.donmai\.us\/danbooru-1\.jpg"[^>]*aria-label="查看大图：Danbooru #1"/);
+    });
+
     test('外链安全加固：统一包含 rel="noreferrer noopener"，无原站地址时降级为纯文本', () => {
       const postWithSource = createPost('danbooru-123');
       const htmlWithSource = renderToString(
@@ -328,7 +351,7 @@ describe('卡片手势无障碍、选区精准化与外链安全加固', () => {
 
     test('图标按钮固定 44px 热区并保留已有按压与收藏反馈', () => {
       expect(css).toMatch(/\.post-actions button\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/);
-      expect(css).toMatch(/\.post-actions\s*\{[^}]*justify-content:\s*space-between;/);
+      expect(css).toMatch(/\.post-actions\s*\{[^}]*justify-content:\s*flex-end;/);
       // 非对称 70ms 按下，180ms 释放
       expect(css).toContain('180ms');
       expect(css).toContain('70ms');

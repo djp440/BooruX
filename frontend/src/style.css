@@ -392,6 +392,9 @@ a {
 
 .settings {
   max-width: 600px;
+  padding-bottom: 32px;
+  /* 分组卡片使用 --surface，页面底色用画布色衬托出分组。 */
+  background: var(--canvas);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -418,11 +421,19 @@ a {
   transform: translateZ(0);
 }
 
-.page-header h1 {
+.page-header h1,
+.detail-header h1 {
   margin: 0;
   font-size: 19px;
   font-weight: 700;
   line-height: 1.3;
+}
+
+.detail-header h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- 搜索 ---------- */
@@ -445,7 +456,7 @@ a {
   min-width: 0;
 }
 
-.search-field .icon {
+.search-field > .icon {
   position: absolute;
   left: 14px;
   width: 18px;
@@ -483,14 +494,49 @@ a {
   outline: none;
 }
 
-.search-field:focus-within .icon {
+.search-field:focus-within > .icon {
   color: var(--accent);
 }
 
-.tag-search {
+/* 搜索框下拉面板：随表单 :focus-within 展开，visibility 保证收起时不进入 Tab 序列。 */
+.search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 1;
   display: grid;
   gap: 10px;
-  padding: 8px 16px 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--overlay-shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease, visibility 0s linear 150ms;
+}
+
+.search-header form:focus-within .search-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-panel { transform: none; }
+}
+
+.search-history-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tag-search {
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -616,6 +662,246 @@ a {
   }
 }
 
+/* ---------- 媒体查看器 ---------- */
+
+/* 锁定页面滚动。html 的 scrollbar-gutter: stable 会保留滚动条槽位，顶层 dialog 盖不住它，
+   因此把根背景设为“半透明遮罩叠在画布上”的近似色，让槽位与遮罩融为一体，同时避免页面重排。 */
+html:has(.media-viewer[open]) {
+  overflow: hidden;
+  background: color-mix(in srgb, #08090b 92%, var(--canvas));
+}
+
+.media-viewer {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(8 9 11 / 0.92);
+  color: #fff;
+  overflow: hidden;
+}
+
+.media-viewer::backdrop {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .media-viewer[open] {
+    animation: viewer-in 180ms var(--ease-out);
+  }
+}
+
+@keyframes viewer-in {
+  from { opacity: 0; }
+}
+
+.viewer-toolbar {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 24px 16px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+  pointer-events: none;
+}
+
+.viewer-toolbar > * {
+  pointer-events: auto;
+}
+
+.viewer-count {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.viewer-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.viewer-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.viewer-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* 缩放时锁定横向轨道，避免平移与切换冲突。 */
+.viewer-track[data-locked] {
+  overflow-x: hidden;
+}
+
+/* 图片用 margin: auto 居中：溢出时自动退化为从左上角开始，原尺寸下整张图都可以滚动到。 */
+.viewer-slide {
+  position: relative;
+  display: grid;
+  grid-template: 100% / 100%;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+.viewer-slide img,
+.viewer-slide video {
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: contain;
+  user-select: none;
+}
+
+.viewer-slide img {
+  cursor: zoom-in;
+}
+
+.viewer-slide[data-zoomed] {
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  cursor: grab;
+}
+
+.viewer-slide[data-zoomed]:active {
+  cursor: grabbing;
+}
+
+.viewer-slide[data-zoomed] img {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+
+.viewer-message {
+  margin: auto;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.viewer-nav {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  display: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 180ms var(--ease-out);
+}
+
+.viewer-nav.prev { left: 16px; }
+.viewer-nav.next { right: 16px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .viewer-nav {
+    display: grid;
+  }
+
+  .viewer-button:hover,
+  .viewer-nav:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+}
+
+.viewer-nav:active {
+  transform: scale(0.92);
+}
+
+/* ---------- 作者页 ---------- */
+
+.artist-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.artist-profile .post-avatar {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
+}
+
+.artist-profile-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.artist-profile-name {
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-profile-tag {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.artist-profile .button {
+  flex: none;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.artist-profile .button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 480px) {
+  .artist-profile { flex-wrap: wrap; }
+  .artist-profile .button { width: 100%; }
+}
+
 /* ---------- 帖子卡片 ---------- */
 
 .feed-results {
@@ -630,7 +916,8 @@ a {
   align-items: start;
   gap: 12px;
   min-width: 0;
-  padding: 14px 16px 6px;
+  --card-pad-x: 16px;
+  padding: 14px var(--card-pad-x) 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   content-visibility: auto;
@@ -664,6 +951,24 @@ a {
   font-weight: 600;
   text-transform: uppercase;
   user-select: none;
+}
+
+/* 作者头像与作者名链接到作者页。 */
+a.post-avatar {
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* 悬停下划线沿用 .post-meta a:hover，这里只恢复作者名的正文色。 */
+.post-meta a.post-author {
+  color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.post-avatar:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
 }
 
 .post-content {
@@ -927,13 +1232,15 @@ a {
 
 /* ---------- 操作栏 ---------- */
 
+/* 操作按钮集中在帖子右下角。20px 图标在 44px 按钮中每侧留白 12px，图标间视觉间距 = gap 4px + 2×12px = 28px；
+   右外边距 16px - 卡片内边距，使最后一个图标到卡片右缘同样是 28px（卡片内边距 + 外边距 + 12px）。 */
 .post-actions {
   display: flex;
   flex: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 2px -10px 0;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 2px calc(16px - var(--card-pad-x)) 0 0;
   cursor: auto;
 }
 
@@ -1425,8 +1732,256 @@ a {
 
 /* ---------- 设置 ---------- */
 
-.setting-item { display: grid; gap: 16px; padding: 20px 16px 24px; border-bottom: 1px solid var(--border); }
-.setting-item h2 { margin: 0 0 4px; font-size: 17px; }
+/* ---------- 设置分组 ---------- */
+
+.settings-nav {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.settings-nav [role="tab"] {
+  flex: none;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.settings-nav [role="tab"][aria-selected="true"] {
+  border-color: var(--primary-bg);
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.setting-group {
+  padding-top: 16px;
+  outline: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .setting-group {
+    animation: fade-enter 160ms ease-out;
+  }
+}
+
+.setting-group-body {
+  margin: 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.setting-item { display: grid; gap: 16px; padding: 18px 16px 20px; border-bottom: 1px solid var(--border); }
+.setting-item:last-child { border-bottom: 0; }
+.setting-item h3 { margin: 0 0 4px; font-size: 16px; }
+.setting-item > .setting-error,
+.setting-item > .setting-notice { margin: 0; }
+
+/* 左侧说明 + 右侧控件的单行布局（开关、清除按钮）。 */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-row > div:first-child { min-width: 0; }
+
+.setting-row-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.setting-row-actions .button {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.button.danger {
+  border-color: var(--error);
+  background: var(--error);
+  color: #fff;
+}
+
+/* 原生 checkbox 绘制为开关，保留键盘与读屏语义（role="switch"）。 */
+.switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--control-border);
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 180ms ease;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 180ms var(--ease-out);
+}
+
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(18px); }
+.switch:disabled { cursor: progress; opacity: 0.6; }
+
+.filter-editor { transition: opacity 150ms ease; }
+.filter-editor[data-enabled="false"] { opacity: 0.6; }
+
+.filter-input {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-input input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.filter-input input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.filter-input .button {
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-tags li {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 4px 2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--subtle);
+  font-size: 13px;
+}
+
+.filter-tags span { overflow-wrap: anywhere; }
+
+.filter-tags button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.filter-tags button::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+.filter-tags .icon { width: 14px; height: 14px; }
+
+.setting-item .filter-empty { color: var(--muted); }
+
+.about-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.about-brand .brand-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.about-links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.about-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.about-links li:last-child a { border-bottom: 0; }
+
+.about-links a span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.about-links .icon { width: 16px; height: 16px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-nav [role="tab"]:not([aria-selected="true"]):hover { border-color: var(--control-border); background: var(--subtle); color: var(--text); }
+  .filter-tags button:hover { background: var(--surface-hover); color: var(--text); }
+  .about-links a:hover span:last-child { color: var(--accent); }
+}
 .setting-item p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted-strong); }
 .setting-item fieldset { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .rating-option { display: flex; gap: 12px; align-items: flex-start; min-height: 52px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease; }
@@ -1499,7 +2054,8 @@ a {
   .post-card {
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 10px;
-    padding: 12px 12px 4px;
+    --card-pad-x: 12px;
+    padding: 12px var(--card-pad-x) 4px;
   }
 
   .post-avatar {

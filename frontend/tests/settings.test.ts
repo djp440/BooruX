@@ -2,14 +2,38 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import React, { act } from 'react';
-import { RATING_OPTIONS, THEME_OPTIONS, THEME_STORAGE_KEY, applyTheme, isRating, isTheme, readCachedTheme } from '../src/rating-settings';
+import { RATING_OPTIONS, THEME_OPTIONS, THEME_STORAGE_KEY, applyTheme, isRating, isTheme, normalizeFilterTag, readCachedTheme, readTagFilter } from '../src/rating-settings';
 import { PageSessions } from '../src/page-session';
-import { clearPostsCache, readPostCache, writePostCache } from '../src/post-cache';
+import { clearPostsCache, postsCacheSize, readPostCache, writePostCache } from '../src/post-cache';
 
 function storage() {
   let raw: string | null = null;
   return { getItem: () => raw, setItem: (_key: string, value: string) => { raw = value; } };
 }
+
+describe('标签屏蔽与本地数据', () => {
+  test('屏蔽标签按后端规则规整：去 #、小写、空白转下划线、限长 100', () => {
+    expect(normalizeFilterTag('  #Blue Hair ')).toBe('blue_hair');
+    expect(normalizeFilterTag('###')).toBe('');
+    expect(normalizeFilterTag('a'.repeat(150))).toHaveLength(100);
+  });
+
+  test('tagFilter 清洗：非对象回退为关闭，只保留字符串标签并保留白名单等字段', () => {
+    expect(readTagFilter(null)).toEqual({ blacklistEnabled: false, blacklist: [] });
+    expect(readTagFilter(['x'])).toEqual({ blacklistEnabled: false, blacklist: [] });
+    expect(readTagFilter({ blacklistEnabled: 'yes', blacklist: ['gore', 1, null], whitelist: ['cat'] }))
+      .toEqual({ blacklistEnabled: false, blacklist: ['gore'], whitelist: ['cat'] });
+  });
+
+  test('缓存大小：空缓存与清空后为 0，写入后为正数', () => {
+    const store = storage();
+    expect(postsCacheSize(store)).toBe(0);
+    writePostCache('home', { success: true, posts: [], nextCursor: '' }, store);
+    expect(postsCacheSize(store)).toBeGreaterThan(0);
+    clearPostsCache(store);
+    expect(postsCacheSize(store)).toBe(0);
+  });
+});
 
 describe('设置页背景色', () => {
   function fakeDocument() {

@@ -640,6 +640,8 @@ func (s *server) danbooruRoutes(mux *http.ServeMux) {
 				nextCursor = encodeCursor(str(posts[limit-1]["createdAt"]), str(posts[limit-1]["id"]))
 			}
 		}
+		// 标签屏蔽在游标计算之后执行：游标仍基于原始结果，分页不受过滤影响。
+		posts = filterAllowedPosts(posts, settings["tagFilter"])
 		posts = s.applyBookmarkState(posts, pid)
 		writeJSON(w, 200, M{"success": true, "source": source, "fallback": fallback, "count": len(posts), "posts": posts, "nextCursor": nextCursor})
 	})

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { fetchPosts, originalMediaURL, postSource, relativeTime, uniquePosts } from './feed';
 import type { Post } from './feed';
 import { isFresh, readPostCache, writePostCache } from './post-cache';
 import { useBookmarks } from './Bookmarks';
 import { Icon } from './icons';
+import MediaViewer from './MediaViewer';
+
+// 普通左键点击才拦截为应用内行为；中键与修饰键保留链接的新标签页打开。
+const isPlainClick = (event: MouseEvent) => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 export function canOpenCard(
   target: unknown,
@@ -43,7 +48,7 @@ function scrollToSibling(button: HTMLElement, direction: -1 | 1) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 }
 
-function Media({ post, index, count }: { post: Post; index: number; count: number }) {
+function Media({ post, index, count, onView }: { post: Post; index: number; count: number; onView: (index: number) => void }) {
   const src = originalMediaURL(post);
   const video = post.mediaType === 'video';
   // 图片加载前显示占位微光，加载后淡入；视频不预加载，直接显示原生控件。
@@ -70,7 +75,7 @@ function Media({ post, index, count }: { post: Post; index: number; count: numbe
       ) : video ? (
         <video src={src} controls playsInline preload="none" aria-label={label} onError={() => setState('failed')} />
       ) : (
-        <a className="media-original" href={src} target="_blank" rel="noreferrer noopener" aria-label={`打开原图：${label}`}>
+        <a className="media-original" href={src} target="_blank" rel="noreferrer noopener" aria-label={`查看大图：${label}`} onClick={event => { if (isPlainClick(event)) { event.preventDefault(); onView(index); } }}>
           <img src={src} alt={label} loading="lazy" decoding="async" ref={img => { if (img?.complete && img.naturalWidth) setState('ready'); }} onLoad={() => setState('ready')} onError={() => setState('failed')} />
         </a>
       )}
@@ -78,7 +83,7 @@ function Media({ post, index, count }: { post: Post; index: number; count: numbe
   );
 }
 
-export default function PostCard({ id, posts: seed, trusted = false, onOpen, onComments }: { id: string; posts: Post[]; trusted?: boolean; onOpen?: () => void; onComments: () => void }) {
+export default function PostCard({ id, posts: seed, trusted = false, onOpen, onComments, onAuthor }: { id: string; posts: Post[]; trusted?: boolean; onOpen?: () => void; onComments: () => void; onAuthor?: (artist: string) => void }) {
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const bookmarks = useBookmarks();
   const bookmarked = bookmarks.snapshot.posts.some(post => (post.parentId || post.id) === id || seed.some(member => member.id === post.id));
@@ -90,6 +95,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(initialCache ? 'ready' : 'loading');
   const [cached, setCached] = useState(initialCache?.data.source === 'sqlite');
   const [attempt, setAttempt] = useState(0);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   useEffect(() => {
     if (!needsFamily || (attempt === 0 && initialCache && isFresh(initialCache))) return;
@@ -116,6 +122,14 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   const primary = posts[0];
   const artist = typeof primary.artist === 'string' ? primary.artist.trim() : '';
   const author = artist && !/^unknown(?:[ _]artist)?$/i.test(artist) ? artist.replaceAll('_', ' ') : '未知作者';
+  // 作者即 Danbooru 画师标签，只有已知的 Danbooru 作者才能进入作者页。
+  const artistHref = onAuthor && author !== '未知作者' && primary.id.startsWith('danbooru-') ? `/artists/${encodeURIComponent(artist)}` : '';
+  const openAuthor = (event: MouseEvent) => {
+    if (!isPlainClick(event)) return;
+    event.preventDefault();
+    onAuthor?.(artist);
+  };
+  const initial = author === '未知作者' ? '?' : Array.from(author)[0];
   const title = typeof primary.title === 'string' ? primary.title.trim() : '';
   const createdAt = typeof primary.createdAt === 'string' && primary.createdAt ? new Date(primary.createdAt) : null;
   const date = createdAt && Number.isFinite(createdAt.getTime()) ? createdAt : null;
@@ -162,11 +176,15 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
         }
       }}
     >
-      <div className="post-avatar" aria-hidden="true">{author === '未知作者' ? '?' : Array.from(author)[0]}</div>
+      {artistHref
+        ? <a className="post-avatar" href={artistHref} tabIndex={-1} aria-hidden="true" onClick={openAuthor}>{initial}</a>
+        : <div className="post-avatar" aria-hidden="true">{initial}</div>}
       <div className="post-content">
         <header className="post-meta" onClick={event => event.stopPropagation()}>
           <div className="post-meta-primary">
-            <strong className="post-author">{author}</strong>
+            {artistHref
+              ? <a className="post-author" href={artistHref} title="查看作者主页" onClick={openAuthor}>{author}</a>
+              : <strong className="post-author">{author}</strong>}
             {source.href ? (
               <a className="post-source" href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
             ) : (
@@ -192,7 +210,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
           role="region"
           aria-label={posts.length > 1 ? `帖子媒体，共 ${posts.length} 项，可横向滚动` : '帖子媒体'}
         >
-          {posts.map((post, index) => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} index={index} count={posts.length} />)}
+          {posts.map((post, index) => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} index={index} count={posts.length} onView={setViewing} />)}
         </div>
         <footer className="post-actions" onClick={event => event.stopPropagation()}>
           <button className="comment-button" onClick={onComments} aria-label="查看评论" title="查看评论">
@@ -216,6 +234,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
             <span className="visually-hidden">{busy ? '处理中…' : bookmarked ? '已收藏' : '收藏'}</span>
           </button>
         </footer>
+        {viewing !== null && <MediaViewer posts={posts} start={viewing} onClose={() => setViewing(null)} />}
         {bookmarks.action?.id === id && bookmarks.action.error && <p className="post-notice" role="alert">{bookmarks.action.message}</p>}
       </div>
     </article>

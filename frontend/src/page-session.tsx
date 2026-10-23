@@ -208,6 +208,7 @@ const SessionContext = createContext<{
   page: PageSession;
   save: () => void;
   open: (id: string, comments?: boolean) => void;
+  openArtist: (artist: string) => void;
   back: () => void;
   goArea: (area: Area) => void;
   invalidate: () => void;
@@ -275,6 +276,13 @@ export function PageSessionProvider({ children }: { children: ReactNode }) {
       const detail = store.open(path, page, location.key);
       detail.commentsIntent = comments;
       navigate(path, { state: { sessionId: detail.id } });
+    },
+    // 作者页与详情一样记录来源，返回按钮可退回原列表并恢复位置。
+    openArtist: artist => {
+      save();
+      const path = `/artists/${encodeURIComponent(artist)}`;
+      const target = store.open(path, page, location.key);
+      navigate(path, { state: { sessionId: target.id } });
     },
     back: () => {
       save();

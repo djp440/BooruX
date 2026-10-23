@@ -60,6 +60,24 @@ func TestTagFilterAndIntent(t *testing.T) {
 	}
 }
 
+func TestFilterAllowedPosts(t *testing.T) {
+	posts := []M{
+		{"id": "a", "tags": []M{{"name": "blood_on_face"}}},
+		{"id": "b", "tags": []M{{"name": "maid"}}},
+	}
+	enabled := map[string]any{"blacklistEnabled": true, "blacklist": []any{"blood"}}
+	if got := filterAllowedPosts(posts, enabled); len(got) != 1 || got[0]["id"] != "b" {
+		t.Fatalf("blood should block blood_on_face, got %v", got)
+	}
+	disabled := map[string]any{"blacklistEnabled": false, "blacklist": []any{"blood"}}
+	if got := filterAllowedPosts(posts, disabled); len(got) != 2 {
+		t.Fatalf("disabled blacklist must keep all posts, got %v", got)
+	}
+	if got := filterAllowedPosts(posts, nil); len(got) != 2 {
+		t.Fatalf("missing filter must keep all posts, got %v", got)
+	}
+}
+
 func TestPostsCursorPagination(t *testing.T) {
 	h := testServer(t)
 	seen := map[string]bool{}

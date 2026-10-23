@@ -100,3 +100,17 @@ func isPostAllowed(post M, filter any) bool {
 	}
 	return true
 }
+
+// filterAllowedPosts 按标签过滤设置剔除帖子；未配置过滤时原样返回。
+func filterAllowedPosts(posts []M, filter any) []M {
+	if _, ok := filter.(map[string]any); !ok {
+		return posts
+	}
+	out := make([]M, 0, len(posts))
+	for _, p := range posts {
+		if isPostAllowed(p, filter) {
+			out = append(out, p)
+		}
+	}
+	return out
+}

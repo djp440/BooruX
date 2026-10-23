@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Link, Outlet, Route, Routes, useLocation } from 'react-router';
-import PostFeed from './PostFeed';
+import { BrowserRouter, Link, Outlet, Route, Routes, useLocation, useParams } from 'react-router';
+import PostFeed, { ArtistPage } from './PostFeed';
 import PostDetail from './PostDetail';
 import Settings from './Settings';
 import { BookmarkProvider, useBookmarks } from './Bookmarks';
@@ -48,6 +48,11 @@ function FeedRoute({ kind }: { kind: 'home' | 'favorites' }) {
   const { page } = usePageSession();
   return <PostFeed key={page.id} kind={kind} />;
 }
+function ArtistRoute() {
+  const { page } = usePageSession();
+  const { name = '' } = useParams();
+  return <ArtistPage key={page.id} artist={name} />;
+}
 function DetailRoute() {
   const { page } = usePageSession();
   return <PostDetail key={page.id} />;
@@ -67,6 +72,7 @@ export default function App() {
     <Routes><Route element={<Layout />}>
       <Route index element={<FeedRoute kind="home" />} />
       <Route path="posts/:id" element={<DetailRoute />} />
+      <Route path="artists/:name" element={<ArtistRoute />} />
       <Route path="favorites" element={<FeedRoute kind="favorites" />} />
       <Route path="favorites/posts/:id" element={<DetailRoute />} />
       <Route path="settings" element={<Settings />} />

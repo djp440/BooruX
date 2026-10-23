@@ -12,7 +12,7 @@ import { readPostDetailCache, removePostCache, writePostCache } from './post-cac
 
 export default function PostDetail() {
   const { id = '' } = useParams();
-  const { page, back } = usePageSession();
+  const { page, back, openArtist } = usePageSession();
   const { refresh } = useBookmarks();
   const cacheKey = `detail:default:${id}`;
   const [detail, setDetail] = useState<PostDetailData | null>(() => {
@@ -137,7 +137,7 @@ export default function PostDetail() {
       </div>
     ))}
     {verified && detail && <>
-      <PostCard id={detail.groupId} posts={detail.posts} trusted onComments={focusComments} />
+      <PostCard id={detail.groupId} posts={detail.posts} trusted onComments={focusComments} onAuthor={openArtist} />
       {!detail.familyComplete && <p className="post-notice">仅显示本地关联帖子，帖子组可能不完整。</p>}
       <section className="comments" ref={commentsRegion} tabIndex={-1} aria-label="原站评论">
         <div className="comments-heading">

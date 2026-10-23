@@ -19,7 +19,22 @@ export const THEME_OPTIONS = [
 ] as const;
 
 export type Theme = typeof THEME_OPTIONS[number]['value'];
-export type SettingsData = { rating: Rating; themeMode: Theme };
+// 标签屏蔽：与后端 tagfilter.go 的 tagFilter 结构一致；白名单等其它字段原样保留，保存时不覆盖。
+export type TagFilter = { blacklistEnabled: boolean; blacklist: string[]; [key: string]: unknown };
+export type SettingsData = { rating: Rating; themeMode: Theme; tagFilter: TagFilter };
+export const TAG_FILTER_MAX = 200;
+
+// 与后端 normalizeTag 规则一致：去首尾空白与开头的 #，小写，空白转下划线，最长 100 字符。
+export function normalizeFilterTag(value: string): string {
+  return Array.from(value.trim().replace(/^#+/, '').toLowerCase().replace(/\s+/g, '_')).slice(0, 100).join('');
+}
+
+export function readTagFilter(value: unknown): TagFilter {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { blacklistEnabled: false, blacklist: [] };
+  const raw = value as Record<string, unknown>;
+  const blacklist = Array.isArray(raw.blacklist) ? raw.blacklist.filter((tag): tag is string => typeof tag === 'string') : [];
+  return { ...raw, blacklistEnabled: raw.blacklistEnabled === true, blacklist };
+}
 
 export function isTheme(value: unknown): value is Theme {
   return typeof value === 'string' && THEME_OPTIONS.some(option => option.value === value);
@@ -34,6 +49,7 @@ export async function fetchSettings(signal: AbortSignal): Promise<SettingsData> 
   return {
     rating: isRating(data.settings.rating) ? data.settings.rating : 'general',
     themeMode: isTheme(data.settings.themeMode) ? data.settings.themeMode : 'system',
+    tagFilter: readTagFilter(data.settings.tagFilter),
   };
 }
 
@@ -51,6 +67,12 @@ export async function saveSettings(settings: Partial<SettingsData>): Promise<voi
   if (!response.ok || !data.success) throw new Error(data.error || '设置保存失败，请重试');
   if (settings.rating && data.settings?.rating !== settings.rating) throw new Error('年龄分级保存失败，请重试');
   if (settings.themeMode && data.settings?.themeMode !== settings.themeMode) throw new Error('背景色保存失败，请重试');
+  if (settings.tagFilter) {
+    const saved = readTagFilter(data.settings?.tagFilter);
+    if (saved.blacklistEnabled !== settings.tagFilter.blacklistEnabled || saved.blacklist.join(' ') !== settings.tagFilter.blacklist.join(' ')) {
+      throw new Error('标签屏蔽保存失败，请重试');
+    }
+  }
 }
 
 export const THEME_STORAGE_KEY = 'boorux:theme';

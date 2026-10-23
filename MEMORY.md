@@ -1,8 +1,27 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
-## 2026-10-23 11:08 前端深度打磨决策
+## 2026-10-23 13:20 设置页分组与标签屏蔽
+- 设置页分为外观、内容、数据与存储、关于四组，用标签页切换，每次只显示一个分组（13:40 按用户要求，从“单页滚动加锚点”改为此方案）。结构上，`role=tablist` 下是 `role=tab` 按钮，方向键和 Home/End 切换焦点；`section.setting-group[role=tabpanel]` 内含视觉隐藏的 `h2` 和 `.setting-group-body` 卡片，设置项标题降为 `h3`。各分组的草稿状态都放在 `Settings` 中，非当前分组直接卸载也不会丢草稿。保存提示通过 `scope` 状态显示在对应设置项内，加载失败仍放在页面顶部。
+- 首页与搜索的列表接口 `GET /api/danbooru/posts` 原本漏掉了 `tagFilter`（详情、关联媒体、收藏早已过滤），现已用 `filterAllowedPosts` 补上。过滤必须放在 `nextCursor` 计算之后，保证游标仍基于原始结果。
+- 端到端验证用隔离数据库另起 Go 服务（`PORT=48302 DB_PATH=.e2e-data/polish/tikbooru.db go run .`），直接测试内嵌的构建产物。48300 端口是用户的服务；48301 端口被一个 10-21 启动的旧 `tikbooru-server` 长期占用，提供的是旧版前端，不要误用。
+
+## 2026-10-23 12:50 媒体查看器
+- 原生 `<dialog>.showModal()` 提供焦点限制、Esc、焦点归还，通过 `createPortal` 挂到 body，避开卡片的 `content-visibility`。React 合成事件仍会穿过 portal 冒泡到 `PostCard` 的 article，dialog 上必须对 click、pointerdown、keydown 调用 `stopPropagation`，否则点查看器会触发“进入详情”。
+- 后退关闭：打开时 `navigate(同路径, { state: { ...state, sessionId: page.id, viewer: token } })`。必须带 `sessionId`，否则 `PageSessions.visit` 会新建会话，导致列表重挂载。压栈放在 `setTimeout` 里，防止 StrictMode 重复压入。`location.key` 离开压入的那条记录即关闭；主动关闭统一走 `navigate(-1)`。
+- dialog 的 `close` 事件只在 `dialog.current && !open` 时处理（浏览器强制关闭）。卸载和 StrictMode 重挂载时 cleanup 调用 `close()` 也会派发该事件，不加判断会多后退一步。
+- 遮罩保持半透明（`rgb(8 9 11 / 0.92)`，用户要求能隐约看到背后页面）。页面滚动用 `html:has(.media-viewer[open]) { overflow: hidden }` 锁定。`html` 设了 `scrollbar-gutter: stable`，槽位会绘制在顶层 dialog 之上：dialog 宽度用 `100%`（不含槽位）而非 `100vw`；根背景设为 `color-mix(#08090b 92%, var(--canvas))`，近似遮罩叠在画布上的颜色。
+- 帖子操作栏（评论、转发、收藏）用 `justify-content: flex-end` 集中在右下角，且最后一个图标到卡片右缘的距离等于图标间视觉间距（28px）。20px 图标在 44px 按钮里每侧留白 12px，右外边距为 `calc(16px - var(--card-pad-x))`；卡片左右内边距通过 `--card-pad-x` 统一（桌面 16px，窄屏 12px）。
+- 原尺寸缩放：图片用 grid 加 `margin: auto` 居中，溢出时自动退化为从左上角开始；`place-items: center` 会让左侧溢出部分无法滚动到。缩放期间锁定横向轨道（`data-locked`）。
+
+## 2026-10-23 12:10 作者页
+- `/artists/:name` 复用 `FeedResults kind="home" query={画师标签}`，不新增后端接口：后端 `artist` 即 `tag_string_artist` 首词，搜索结果与首页同标签搜索共享缓存键。
+- 作者链接只对已知作者（非 `Unknown_Artist`）且 `danbooru-` 帖子生效；`PostCard` 以 `onAuthor` 回调跳转（测试用 `renderToString` 渲染卡片时没有 Router，卡片内不能用 `Link`），保留真实 `href` 支持中键或 Ctrl 点击在新标签页打开。
+- 进入作者页走 `openArtist`：与详情一样经 `store.open` 记录 `origin`，返回时 `backDelta` 退回来源页；`/artists/*` 归入 home 区域，但不写入 `lastVisit`。
+- `.post-meta a`（0,1,1）的优先级高于 `.post-author`，作者名改为链接后要用 `.post-meta a.post-author` 恢复正文色。
+
+## 2026-10-23 11:08 前端深度打磨决策（11:40 补充搜索面板）
 - **版心**：取代 2026-10-21 的 1200px 版心。所有页面共用最宽 600px 内容列（`.feed`、`.settings`），桌面为 200px 侧栏 + 24px 间距 + 内容列，`.app-shell` 最宽 856px 居中；宽屏两侧留白，避免竖图在宽列中左贴大片空白。
-- **页头**：列表、详情、设置统一使用半透明磨砂吸顶页头（`.page-header` / `.detail-header`）；首页页头即搜索框，标题 `h1` 视觉隐藏。
+- **页头**：列表、详情、设置统一使用半透明磨砂吸顶页头（`.page-header` / `.detail-header`）；首页页头即搜索框，标题 `h1` 视觉隐藏。搜索历史与语法提示合并为搜索框下拉面板（`.search-panel`，随表单 `:focus-within` 显示）；面板内按钮在 mousedown 时 `preventDefault` 保持输入框焦点，否则 Safari 点击按钮不聚焦，面板会在 click 前收起。
 - **反馈**：图片 `data-state` 控制微光占位与淡入；首次加载使用 `.skeleton-card`（不得复用 `.post-card`，`page-session` 用 `.post-detail .post-card` 判断详情是否已渲染）；收藏成功走 `Layout` 中的底部 toast，失败仍在卡片内 alert。
 - **收藏按钮禁用**：其它卡片提交期间所有收藏按钮仍会 `disabled`，但只有 `aria-busy` 的那个显示脉冲；不再整页变灰。
 - **多媒体翻页**：位置角标和左右按钮渲染在每个 `figure` 内（按索引静态计算），无需滚动监听；按钮 `tabIndex=-1` 只服务鼠标，键盘聚焦轨道用方向键。

@@ -59,6 +59,16 @@ export function removePostCache(key: string, storage?: StorageAccess): void {
   }
 }
 
+// 缓存占用的字符数（近似字节数），供设置页展示；存储不可用时为 0。
+export function postsCacheSize(storage?: Pick<Storage, 'getItem'>): number {
+  try {
+    const value = (storage ?? localStorage).getItem(STORAGE_KEY);
+    return value && value !== '{}' ? value.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function clearPostsCache(storage?: StorageAccess): void {
   try {
     (storage ?? localStorage).setItem(STORAGE_KEY, '{}');

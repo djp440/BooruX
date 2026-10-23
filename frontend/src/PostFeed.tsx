@@ -20,7 +20,11 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
   const [query, setQuery] = useState(page.feedQuery || '');
   const [draft, setDraft] = useState(query);
   const [history, setHistory] = useState(readSearchHistory);
+  const term = draft.trim();
+  const suggestions = term && term !== query ? history.filter(item => item.includes(term)) : history;
   const search = (value: string) => {
+    // 提交后收起历史面板（面板随表单 :focus-within 显示），移动端同时收起键盘。
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const next = normalizeTagQuery(value);
     setDraft(next);
     if (next) {
@@ -38,33 +42,66 @@ export default function PostFeed({ kind }: { kind: 'home' | 'favorites' }) {
     {kind === 'home' ? <>
       <header className="page-header search-header">
         <h1 className="visually-hidden">首页</h1>
-        <form role="search" aria-label="搜索帖子标签" onSubmit={event => { event.preventDefault(); search(draft); }}>
+        <form role="search" aria-label="搜索帖子标签" onSubmit={event => { event.preventDefault(); search(draft); }}
+          onKeyDown={event => { if (event.key === 'Escape' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
           <label htmlFor="tag-search" className="visually-hidden">搜索标签</label>
           <div className="search-controls">
-            <span className="search-field">
+            <div className="search-field">
               <Icon name="search" />
               <input id="tag-search" type="search" value={draft} maxLength={SEARCH_MAX_LENGTH} autoComplete="off" autoCapitalize="none" autoCorrect="off" enterKeyHint="search" spellCheck={false}
-                placeholder="搜索标签" aria-describedby="tag-search-help" onChange={event => setDraft(event.target.value)} />
-            </span>
+                placeholder="搜索标签" aria-describedby="tag-search-help"
+                // 原生清除按钮（×）触发 search 事件且值为空：直接显示全部。React 不代理该事件，用 ref 订阅。
+                ref={input => {
+                  if (!input) return;
+                  const onClear = () => { if (!input.value) search(''); };
+                  input.addEventListener('search', onClear);
+                  return () => input.removeEventListener('search', onClear);
+                }}
+                onChange={event => setDraft(event.target.value)}
+                onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); event.currentTarget.form?.querySelector<HTMLElement>('.search-history li button')?.focus(); } }} />
+              {/* 聚焦搜索框时展开：最近搜索 + 语法提示。按钮按下时阻止默认行为，保持输入框焦点，避免面板在点击生效前收起。 */}
+              <div className="search-panel" onMouseDown={event => { if (event.target instanceof Element && event.target.closest('button')) event.preventDefault(); }}>
+                {history.length > 0 && <div className="search-history" role="group" aria-label="搜索历史">
+                  <div className="search-history-heading"><span><Icon name="history" />最近搜索</span><button type="button" onClick={() => { clearSearchHistory(); setHistory([]); }}>清空历史</button></div>
+                  {suggestions.length ? <ul>{suggestions.map(item => <li key={item}><button type="button" className={item === query ? 'active' : undefined} onClick={() => search(item)}>{item}</button></li>)}</ul>
+                    : <p className="search-history-empty">没有匹配的历史，按回车搜索</p>}
+                </div>}
+                <p id="tag-search-help" className="search-help">多个 tag 用空格分隔并同时匹配，tag 内的空格用下划线，例如 sky blue_hair。</p>
+              </div>
+            </div>
             <button type="submit" className="button primary search-submit">搜索</button>
           </div>
         </form>
       </header>
-      <div className="tag-search">
-        <p id="tag-search-help" className="search-help">多个 tag 用空格分隔并同时匹配，tag 内的空格用下划线，例如 sky blue_hair。</p>
-        {query && <div className="search-current"><span>正在显示 <strong>{query}</strong> 的结果</span><button type="button" className="text-button" onClick={() => search('')}>显示全部</button></div>}
-        {history.length > 0 && <div className="search-history" aria-label="搜索历史">
-          <div className="search-history-heading"><span><Icon name="history" />最近搜索</span><button type="button" onClick={() => { clearSearchHistory(); setHistory([]); }}>清空历史</button></div>
-          <ul>{history.map(item => <li key={item}><button type="button" className={item === query ? 'active' : undefined} onClick={() => search(item)}>{item}</button></li>)}</ul>
-        </div>}
-      </div>
+      {query && <div className="tag-search">
+        <div className="search-current"><span>正在显示 <strong>{query}</strong> 的结果</span><button type="button" className="text-button" onClick={() => search('')}>显示全部</button></div>
+      </div>}
     </> : <header className="page-header"><h1>收藏</h1></header>}
     <FeedResults key={`${kind}:${query}`} kind={kind} query={query} onReset={() => search('')} />
   </section>;
 }
 
-export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorites'; query: string; onReset?: () => void }) {
-  const { page, open, goArea } = usePageSession();
+// 作者页：作者即 Danbooru 画师标签，列表直接复用标签搜索结果。
+export function ArtistPage({ artist }: { artist: string }) {
+  const { back, openArtist } = usePageSession();
+  const name = artist.replaceAll('_', ' ');
+  return <section className="feed" aria-label={`${name} 的帖子`}>
+    <header className="detail-header"><button className="icon-button" onClick={back} aria-label="返回" title="返回"><Icon name="back" /></button><h1>{name}</h1></header>
+    <div className="artist-profile">
+      <span className="post-avatar" aria-hidden="true">{Array.from(name)[0]}</span>
+      <div className="artist-profile-text">
+        <p className="artist-profile-name">{name}</p>
+        <p className="artist-profile-tag">#{artist}</p>
+      </div>
+      <a className="button" href={`https://danbooru.donmai.us/posts?tags=${encodeURIComponent(artist)}`} target="_blank" rel="noreferrer noopener">在 Danbooru 查看<Icon name="open" /></a>
+    </div>
+    <FeedResults kind="home" query={artist}
+      onAuthor={next => next === artist ? window.scrollTo({ top: 0, behavior: 'smooth' }) : openArtist(next)} />
+  </section>;
+}
+
+export function FeedResults({ kind, query, onReset, onAuthor }: { kind: 'home' | 'favorites'; query: string; onReset?: () => void; onAuthor?: (artist: string) => void }) {
+  const { page, open, openArtist, goArea } = usePageSession();
   const bookmarks = useBookmarks();
   const { refresh: refreshBookmarks } = bookmarks;
   const cacheKey = searchCacheKey(query);
@@ -138,7 +175,7 @@ export function FeedResults({ kind, query, onReset }: { kind: 'home' | 'favorite
     <div className="feed-results">
       {displayed.source === 'sqlite' && <p className="feed-notice" role="status">当前展示本地缓存。</p>}
       {kind === 'home' && bookmarks.error && <p className="feed-notice" role="alert">收藏状态加载失败。<button className="text-button" onClick={() => void refreshBookmarks()}>重试</button></p>}
-      {groups.map(group => <PostCard key={group.id} id={group.id} posts={group.posts} onOpen={() => open(group.posts.find(post => post.id === group.id)?.id || group.posts[0].id)} onComments={() => open(group.posts.find(post => post.id === group.id)?.id || group.posts[0].id, true)} />)}
+      {groups.map(group => <PostCard key={group.id} id={group.id} posts={group.posts} onOpen={() => open(group.posts.find(post => post.id === group.id)?.id || group.posts[0].id)} onComments={() => open(group.posts.find(post => post.id === group.id)?.id || group.posts[0].id, true)} onAuthor={onAuthor || openArtist} />)}
       {displayedLoading && !groups.length && <><SkeletonCard /><SkeletonCard /><SkeletonCard /></>}
       <div className="feed-status" aria-live="polite">
         {displayedLoading && <p role="status" className="visually-hidden">{groups.length ? '正在更新帖子…' : '正在加载帖子…'}</p>}
