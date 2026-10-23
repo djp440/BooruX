@@ -1,5 +1,9 @@
 # 项目记忆与经验沉淀 (MEMORY)
 
+## 2026-10-23 19:14 GitHub Actions CI
+- `.github/workflows/ci.yml` 在 push main 与 PR 时跑 `go test ./...`、`bun run check`、`bun test`。CI 的 bun 不锁版本，会比本地新（本地 1.3.14 时 CI 已是 1.4.4）；可用 `bunx bun@<版本> test` 在本地复现。
+- 测试里替换 `window`、`document`、`localStorage` 全局必须用 `Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })`：Linux 上的 bun 1.4 中这些全局只读，直接赋值会抛 `Attempted to assign to readonly property`，Windows 本地不会复现。
+
 ## 2026-10-23 16:53 对话页切换页面后保持状态
 - 沿用 `page-session` 的做法（和 `PostFeed` 的 `page.feed` 一致）：对话页把现场写进当前 `PageSession.chat`（会话快照、草稿文字、图片草稿、引用、`follow`），重新挂载时按路由里的会话 id 校验后还原，不显示加载中，再后台 `getConversation` 刷新；滚动位置由 provider 已有的 `beginRestore` 恢复。`follow` 必须一并还原，否则刷新后的 `useLayoutEffect([state])` 会把页面拽到底部。
 - 侧边栏「AI 助手」以前固定跳 `/chat`，等于每次新开对话；现在 `goChat` 回到 `store.lastChat`（同 sessionId），已在对话页内再点才新开对话。`lastChat` 要在 `prune` 里算作可达。
