@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyEvent, parseSSE, resultPosts, toolSummary } from '../src/chat-api';
+import { applyEvent, contextUsage, parseSSE, resultPosts, toolSummary } from '../src/chat-api';
 import type { ChatState, ToolCall } from '../src/chat-api';
 
 const empty = (): ChatState => ({
@@ -64,4 +64,9 @@ describe('工具展示', () => {
     expect(resultPosts(call('get_post', {}, { post: { id: 'p1', tags: ['cat'], previewUrl: '/p' } }))[0]).toMatchObject({ id: 'p1', previewUrl: '/p', tags: [{ name: 'cat' }] });
     expect(resultPosts(call('search_posts', {}, { error: '失败' }))).toEqual([]);
   });
+});
+
+test('contextUsage 格式化占用并给出比例', () => {
+  expect(contextUsage({ id: 'r', status: 'completed', contextUsed: 12345, contextLimit: 128000 })).toEqual({ text: '12.3k / 128k', ratio: 12345 / 128000 });
+  expect(contextUsage({ id: 'r', status: 'completed' })).toBeNull();
 });

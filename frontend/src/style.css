@@ -3038,3 +3038,6 @@ a.post-avatar {
 .memory-list p { margin: 0; overflow-wrap: anywhere; }
 .memory-list small { color: var(--muted, inherit); opacity: 0.7; }
 .memory-list textarea { width: 100%; resize: vertical; }
+
+.chat-context { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-context[data-warn] { color: var(--danger, #f4212e); }

@@ -110,6 +110,8 @@ func initAiTables(db *sql.DB) error {
 	migrate("ai_runs", "protocol", "TEXT NOT NULL DEFAULT 'openai'")
 	migrate("ai_runs", "reasoningSummary", "INTEGER NOT NULL DEFAULT 1")
 	migrate("ai_runs", "systemPrompt", "TEXT NOT NULL DEFAULT ''")
+	migrate("ai_runs", "contextUsed", "INTEGER NOT NULL DEFAULT 0")
+	migrate("ai_runs", "contextLimit", "INTEGER NOT NULL DEFAULT 0")
 	migrate("ai_runs", "memory", "TEXT NOT NULL DEFAULT ''")
 	migrate("ai_events", "attempt", "INTEGER NOT NULL DEFAULT 1")
 	migrate("ai_runs", "conversationId", "TEXT REFERENCES ai_conversations(id) ON DELETE CASCADE")

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -153,5 +154,26 @@ func TestMemoryHTTP(t *testing.T) {
 	}
 	if w := do(h, "GET", "/api/profiles/nope/chat/memories", ""); w.Code != 404 {
 		t.Fatal(w.Code)
+	}
+}
+
+func TestContextLimitSettingAndUsage(t *testing.T) {
+	h, newConv, _, _, _ := newSessionEnv(t)
+	if w := do(h, "PUT", "/api/settings?profileId=default", `{"aiContextLimit":100}`); w.Code == 200 {
+		t.Fatal("低于 8000 应非法")
+	}
+	if w := do(h, "PUT", "/api/settings?profileId=default", `{"aiContextLimit":8000}`); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	cid := newConv()
+	big := strings.Repeat("长", 3000)
+	var snap M
+	for i, id := range []string{"a", "b", "c"} {
+		snap = send(t, h, cid, `{"text":"`+big+`","requestId":"`+id+fmt.Sprint(i)+`"}`)
+	}
+	runs := snap["runs"].([]any)
+	last := runs[len(runs)-1].(map[string]any)
+	if last["contextLimit"] != float64(8000) || last["contextUsed"].(float64) <= 0 || last["contextUsed"].(float64) > 8000 || last["omitted"] == float64(0) {
+		t.Fatal("占用或裁剪不符合预期", last)
 	}
 }

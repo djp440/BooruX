@@ -26,7 +26,7 @@ const (
 	defaultProfileID   = "default"
 	defaultProfileName = "默认配置"
 	maxProfileName     = 40
-	maxSettings        = 16
+	maxSettings        = 20
 	maxSearchHistory   = 12
 )
 
@@ -464,6 +464,12 @@ func setProfileSettings(db *sql.DB, profileID string, settings M) (M, error) {
 			}
 			if nk == "aiMemoryEnabled" {
 				if _, ok := value.(bool); !ok {
+					return errors.New("INVALID_SETTING")
+				}
+			}
+			if nk == "aiContextLimit" {
+				f, ok := value.(float64)
+				if !ok || f != math.Trunc(f) || f < contextMinLimit || f > contextMaxLimit {
 					return errors.New("INVALID_SETTING")
 				}
 			}

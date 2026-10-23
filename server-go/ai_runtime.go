@@ -592,6 +592,7 @@ func (rt *AiRuntime) buildContext(run M, supportsTools bool) ([]ChatMessage, err
 		}
 		grouped[rid] = append(grouped[rid], m)
 	}
+	limit := contextLimit(rt.db, profileID)
 	size, omitted, imageCount, imageBytes := utf16Len(system.Content), 0, 0, 0
 	var selected [][]ChatMessage
 	for i := len(order) - 1; i >= 0; i-- {
@@ -629,7 +630,7 @@ func (rt *AiRuntime) buildContext(run M, supportsTools bool) ([]ChatMessage, err
 		}
 		enc, _ := json.Marshal(stripped)
 		length := utf16Len(string(enc))
-		if size+length > 32000 || imageCount+imgs > 4 || imageBytes+bytes > 20*1024*1024 {
+		if size+length > limit || imageCount+imgs > 4 || imageBytes+bytes > 20*1024*1024 {
 			if gid == runID {
 				return nil, errors.New("当前轮次上下文超过限制，请缩小请求范围")
 			}
@@ -644,7 +645,8 @@ func (rt *AiRuntime) buildContext(run M, supportsTools bool) ([]ChatMessage, err
 	if len(selected) == 0 {
 		return nil, errors.New("当前轮次上下文超过限制，请清空后重新开始")
 	}
-	_, _ = rt.db.Exec("UPDATE ai_runs SET omitted=? WHERE id=?", omitted, runID)
+	_, _ = rt.db.Exec("UPDATE ai_runs SET omitted=?,contextUsed=?,contextLimit=? WHERE id=?", omitted, size, limit, runID)
+	rt.event(runID, "context_usage", M{"used": size, "limit": limit})
 	if omitted > 0 {
 		rt.event(runID, "context_trimmed", M{"omitted": omitted})
 	}

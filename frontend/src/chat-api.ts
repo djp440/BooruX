@@ -6,7 +6,7 @@ export type ChatMessage = {
   id: number; runId: string; status: string; role: 'user' | 'assistant' | 'tool' | 'system'; content?: string; blocks: ChatBlock[];
   tool_calls?: { id: string; function: { name: string; arguments: string } }[];
 };
-export type ChatRun = { id: string; status: string; error?: string | null; modelName?: string; providerName?: string; omitted?: number };
+export type ChatRun = { id: string; status: string; error?: string | null; modelName?: string; providerName?: string; omitted?: number; contextUsed?: number; contextLimit?: number };
 export type ToolCall = { callId: string; runId?: string; name: string; arguments: string; status: string; result?: Record<string, unknown> | null };
 export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; status?: string | null };
 export type ChatState = { conversation: Conversation; messages: ChatMessage[]; runs: ChatRun[]; calls: Record<string, ToolCall>; cursor: number };
@@ -142,6 +142,8 @@ export function applyEvent(state: ChatState, event: ChatEvent): ChatState {
     }
     case 'context_trimmed':
       return { ...next, runs: patchRun(state.runs, event.runId, { omitted: Number(data.omitted) }) };
+    case 'context_usage':
+      return { ...next, runs: patchRun(state.runs, event.runId, { contextUsed: Number(data.used), contextLimit: Number(data.limit) }) };
     case 'run_finished':
       return { ...next, runs: patchRun(state.runs, event.runId, { status: 'completed' }) };
     case 'run_failed':
@@ -153,6 +155,13 @@ export function applyEvent(state: ChatState, event: ChatEvent): ChatState {
 
 function parseArgs(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw) ?? {}; } catch { return {}; }
+}
+
+// 上下文占用，例如「12.3k / 128k」；尚无数据时返回 null。
+export function contextUsage(run?: ChatRun): { text: string; ratio: number } | null {
+  if (!run?.contextUsed || !run.contextLimit) return null;
+  const k = (n: number) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
+  return { text: `${k(run.contextUsed)} / ${k(run.contextLimit)}`, ratio: run.contextUsed / run.contextLimit };
 }
 
 // 工具卡片标题，例如「搜索作品 · cat · 12 个结果」。

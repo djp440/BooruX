@@ -7,6 +7,7 @@ import { useBookmarks } from './Bookmarks';
 import { clearPostsCache, postsCacheSize } from './post-cache';
 import { clearSearchHistory, readSearchHistory } from './search';
 import { Icon } from './icons';
+import ContextSettings from './ContextSettings';
 import MemorySettings from './MemorySettings';
 import ProviderSettings from './ProviderSettings';
 
@@ -313,6 +314,7 @@ export default function Settings() {
 
       <Group index={2} active={tab}>
         <ProviderSettings />
+        <ContextSettings />
         <MemorySettings />
       </Group>
 

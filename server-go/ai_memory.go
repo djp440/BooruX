@@ -13,6 +13,20 @@ const (
 	memoryMaxLimit     = 10000
 )
 
+// 对话上下文字符预算（UTF-16 单位）：默认 128k，可在设置中调整。
+const (
+	contextDefaultLimit = 128000
+	contextMinLimit     = 8000
+	contextMaxLimit     = 1000000
+)
+
+func contextLimit(q querier, pid string) int {
+	if f, ok := getProfileSettings(q, pid)["aiContextLimit"].(float64); ok {
+		return int(f)
+	}
+	return contextDefaultLimit
+}
+
 var errMemoryNotFound = errors.New("记忆不存在")
 var errMemoryFull = errors.New("记忆总字数已达上限，需先合并或遗忘旧条目")
 

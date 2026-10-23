@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { ClipboardEvent, DragEvent, FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
-  applyEvent, cancelRun, createConversation, deleteConversation, fetchChatConfig, forkConversation, getConversation, isActive,
+  applyEvent, cancelRun, contextUsage, createConversation, deleteConversation, fetchChatConfig, forkConversation, getConversation, isActive,
   listConversations, listenRun, removeAttachment, renameConversation, retryRun, startRun, uploadAttachment,
 } from './chat-api';
 import type { ChatState, Conversation } from './chat-api';
@@ -133,6 +133,7 @@ export default function Chat() {
   }, [page, conversationId, state, text, quotes, drafts]);
 
   const lastRun = state?.runs.at(-1);
+  const usage = contextUsage(state?.runs.filter(run => run.contextUsed).at(-1));
   const running = isActive(lastRun?.status);
   const uploading = drafts.some(item => !item.id && !item.error);
   const ready = drafts.filter(item => item.id).map(item => item.id!);
@@ -389,6 +390,7 @@ export default function Chat() {
           </select>
           <Icon name="chevron" />
         </label>}
+        {usage && <span className="chat-context" data-warn={usage.ratio > 0.85 || undefined} title={`上下文占用 ${Math.round(usage.ratio * 100)}%，超出后较早的对话不再纳入`}>{usage.text}</span>}
         {running
           ? <button type="button" className="chat-send stop" aria-label="停止生成" title="停止" onClick={stop}><Icon name="stop" /></button>
           : <button type="submit" className="chat-send" aria-label="发送" title="发送（Enter）" disabled={!canSend} aria-busy={sending}>
