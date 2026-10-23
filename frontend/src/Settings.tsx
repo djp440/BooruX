@@ -121,26 +121,27 @@ export default function Settings() {
   };
 
   return <section className="settings" aria-label="设置">
-    <h1>设置</h1>
-    {loadError && <p className="setting-error" role="alert">{loadError}<button type="button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>}
-    {saveError && <p className="setting-error" role="alert">{saveError}{retrySave && <button type="button" onClick={retrySave}>重试</button>}</p>}
+    <header className="page-header"><h1>设置</h1></header>
+    {loadError && <p className="setting-error" role="alert">{loadError}<button type="button" className="text-button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>}
+    {saveError && <p className="setting-error" role="alert">{saveError}{retrySave && <button type="button" className="text-button" onClick={retrySave}>重试</button>}</p>}
     {notice && <p className="setting-notice" role="status">{notice}</p>}
-    {loading ? <p role="status">正在加载设置…</p> : <>
+    {loading ? <div className="setting-loading" role="status"><span className="spinner" aria-hidden="true" />正在加载设置…</div> : <>
       <form ref={themeFormRef} className="setting-item" aria-labelledby="theme-heading" onSubmit={event => { event.preventDefault(); void saveTheme(); }}>
         <div>
           <h2 id="theme-heading">背景色</h2>
           <p>选择界面外观；跟随系统会随设备设置自动切换。</p>
         </div>
-        <fieldset disabled={saving === 'theme'}>
+        <fieldset className="theme-options" disabled={saving === 'theme'}>
           <legend className="visually-hidden">选择背景色</legend>
-          {THEME_OPTIONS.map(option => <label key={option.value} className="rating-option">
+          {THEME_OPTIONS.map(option => <label key={option.value} className="rating-option theme-option">
+            <span className="theme-swatch" data-preview={option.value} aria-hidden="true" />
             <input type="radio" name="themeMode" value={option.value} checked={themeDraft === option.value} onChange={() => { setThemeDraft(option.value); applyTheme(option.value, false); setNotice(''); setSaveError(''); setRetrySave(null); }} />
             <span><strong>{option.label}</strong><small>{option.description}</small></span>
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button type="submit" className="primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
-          {themeDraft !== theme && <button type="button" disabled={saving !== ''} onClick={cancelTheme}>取消更改</button>}
+          <button type="submit" className="button primary" disabled={saving !== '' || themeDraft === theme}>{saving === 'theme' ? '保存中…' : '保存'}</button>
+          {themeDraft !== theme && <button type="button" className="button" disabled={saving !== ''} onClick={cancelTheme}>取消更改</button>}
         </div>
       </form>
       <form ref={ratingFormRef} className="setting-item" aria-labelledby="rating-heading" onSubmit={event => { event.preventDefault(); void saveRating(); }}>
@@ -156,8 +157,8 @@ export default function Settings() {
           </label>)}
         </fieldset>
         <div className="setting-actions">
-          <button type="submit" className="primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
-          {draft !== rating && <button type="button" disabled={saving !== ''} onClick={cancelRating}>取消更改</button>}
+          <button type="submit" className="button primary" disabled={saving !== '' || draft === rating}>{saving === 'rating' ? '保存中…' : '保存'}</button>
+          {draft !== rating && <button type="button" className="button" disabled={saving !== ''} onClick={cancelRating}>取消更改</button>}
         </div>
       </form>
     </>}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchPosts, originalMediaURL, postSource, uniquePosts } from './feed';
+import { fetchPosts, originalMediaURL, postSource, relativeTime, uniquePosts } from './feed';
 import type { Post } from './feed';
 import { isFresh, readPostCache, writePostCache } from './post-cache';
 import { useBookmarks } from './Bookmarks';
+import { Icon } from './icons';
 
 export function canOpenCard(
   target: unknown,
@@ -35,25 +36,42 @@ export function canOpenCard(
   return true;
 }
 
-function Media({ post }: { post: Post }) {
-  const [failed, setFailed] = useState(false);
+// 翻到相邻媒体：按钮只服务鼠标用户（触屏横滑、键盘聚焦轨道后方向键滚动），因此不进入 Tab 序列。
+function scrollToSibling(button: HTMLElement, direction: -1 | 1) {
+  const figure = button.closest('.post-media');
+  const target = direction < 0 ? figure?.previousElementSibling : figure?.nextElementSibling;
+  target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+}
+
+function Media({ post, index, count }: { post: Post; index: number; count: number }) {
   const src = originalMediaURL(post);
+  const video = post.mediaType === 'video';
+  // 图片加载前显示占位微光，加载后淡入；视频不预加载，直接显示原生控件。
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>(video ? 'ready' : 'loading');
   const { label } = postSource(post.id);
   return (
-    <figure className="post-media">
+    <figure className="post-media" data-state={src ? state : 'failed'}>
+      {count > 1 && <>
+        <span className="post-media-count" aria-hidden="true">{index + 1} / {count}</span>
+        {index > 0 && <button type="button" tabIndex={-1} className="media-nav prev" aria-label="上一项媒体" title="上一项" onClick={event => scrollToSibling(event.currentTarget, -1)}><Icon name="prev" /></button>}
+        {index < count - 1 && <button type="button" tabIndex={-1} className="media-nav next" aria-label="下一项媒体" title="下一项" onClick={event => scrollToSibling(event.currentTarget, 1)}><Icon name="next" /></button>}
+      </>}
       {!src ? (
-        <p className="media-message">未提供可访问的原始媒体</p>
-      ) : failed ? (
+        <p className="media-message"><Icon name="image" />未提供可访问的原始媒体</p>
+      ) : state === 'failed' ? (
         <div className="media-message" role="status">
+          <Icon name="image" />
           <p>媒体加载失败</p>
-          <button onClick={() => setFailed(false)}>重试</button>
-          <a href={src} target="_blank" rel="noreferrer noopener">打开原文件</a>
+          <div className="media-message-actions">
+            <button className="button" onClick={() => setState(video ? 'ready' : 'loading')}>重试</button>
+            <a href={src} target="_blank" rel="noreferrer noopener">打开原文件</a>
+          </div>
         </div>
-      ) : post.mediaType === 'video' ? (
-        <video src={src} controls playsInline preload="none" aria-label={label} onError={() => setFailed(true)} />
+      ) : video ? (
+        <video src={src} controls playsInline preload="none" aria-label={label} onError={() => setState('failed')} />
       ) : (
         <a className="media-original" href={src} target="_blank" rel="noreferrer noopener" aria-label={`打开原图：${label}`}>
-          <img src={src} alt={label} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+          <img src={src} alt={label} loading="lazy" decoding="async" ref={img => { if (img?.complete && img.naturalWidth) setState('ready'); }} onLoad={() => setState('ready')} onError={() => setState('failed')} />
         </a>
       )}
     </figure>
@@ -150,21 +168,21 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
           <div className="post-meta-primary">
             <strong className="post-author">{author}</strong>
             {source.href ? (
-              <a href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
+              <a className="post-source" href={source.href} target="_blank" rel="noreferrer noopener">{source.label}</a>
             ) : (
-              <span>{source.label}</span>
+              <span className="post-source">{source.label}</span>
             )}
-            {date && <><span className="post-meta-separator" aria-hidden="true">·</span><time dateTime={date.toISOString()} title={date.toLocaleString('zh-CN')}>{date.toLocaleDateString('zh-CN')}</time></>}
+            {date && <span className="post-meta-time"><span className="post-meta-separator" aria-hidden="true">·</span><time dateTime={date.toISOString()} title={date.toLocaleString('zh-CN')}>{relativeTime(date)}</time></span>}
           </div>
-          {onOpen && <button className="detail-entry" onClick={onOpen} aria-label="查看详情" title="查看详情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg></button>}
+          {onOpen && <button className="detail-entry" onClick={onOpen} aria-label="查看详情" title="查看详情"><Icon name="open" /></button>}
         </header>
         {title && <p className="post-body">{title}</p>}
         <div className="post-tags" data-preview={Boolean(onOpen)} role="region" aria-label="帖子标签" title={onOpen ? '进入详情查看完整标签' : undefined}>
           {tags.length ? tags.map(tag => <span className="post-tag" key={tag.name}>{`#${tag.name} `}</span>) : <span>暂无标签</span>}
         </div>
-        {needsFamily && status === 'loading' && !related.length && <p className="post-notice" role="status">正在加载关联媒体…</p>}
+        {needsFamily && status === 'loading' && !related.length && <p className="post-notice" role="status"><span className="spinner" aria-hidden="true" />正在加载关联媒体…</p>}
         {needsFamily && status === 'error' && (
-          <p className="post-notice" role="alert">{related.length ? '关联媒体更新失败，正在显示已缓存内容。' : '关联媒体加载失败，当前展示不完整。'}<button onClick={() => setAttempt(value => value + 1)}>重试</button></p>
+          <p className="post-notice" role="alert">{related.length ? '关联媒体更新失败，正在显示已缓存内容。' : '关联媒体加载失败，当前展示不完整。'}<button className="text-button" onClick={() => setAttempt(value => value + 1)}>重试</button></p>
         )}
         {cached && <p className="post-notice">仅显示本地缓存，关联媒体可能不完整。</p>}
         <div
@@ -174,16 +192,15 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
           role="region"
           aria-label={posts.length > 1 ? `帖子媒体，共 ${posts.length} 项，可横向滚动` : '帖子媒体'}
         >
-          {posts.map(post => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} />)}
+          {posts.map((post, index) => <Media key={`${post.id}:${originalMediaURL(post)}`} post={post} index={index} count={posts.length} />)}
         </div>
-        {posts.length > 1 && <p className="post-media-count">{posts.length} 个媒体</p>}
         <footer className="post-actions" onClick={event => event.stopPropagation()}>
-          <button onClick={onComments} aria-label="查看评论" title="查看评论">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" /></svg>
+          <button className="comment-button" onClick={onComments} aria-label="查看评论" title="查看评论">
+            <Icon name="comment" />
             <span className="visually-hidden">评论</span>
           </button>
           <button disabled aria-label="转发功能尚未开放" title="转发功能尚未开放">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4" /></svg>
+            <Icon name="repost" />
             <span className="visually-hidden">转发</span>
           </button>
           <button
@@ -195,7 +212,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
             disabled={!bookmarks.ready || bookmarks.pendingId !== null}
             onClick={() => void bookmarks.toggle(id, posts)}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" /></svg>
+            <Icon name="bookmark" />
             <span className="visually-hidden">{busy ? '处理中…' : bookmarked ? '已收藏' : '收藏'}</span>
           </button>
         </footer>

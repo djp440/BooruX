@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from 'bun:test';
-import { fetchPosts, groupPosts, originalMediaURL, postSource, setPostBookmark, uniquePosts } from '../src/feed';
+import { fetchPosts, groupPosts, originalMediaURL, postSource, relativeTime, setPostBookmark, uniquePosts } from '../src/feed';
 import type { Post } from '../src/feed';
 
 function post(id: string, parentId: string | null = null): Post {
@@ -109,5 +109,19 @@ describe('帖子流', () => {
   test('GIF 与视频也保留原文件地址', () => {
     expect(originalMediaURL({ ...post('danbooru-1'), imageUrl: '/api/media?url=https%3A%2F%2Fcdn.donmai.us%2Foriginal%2Fa.gif' })).toContain('a.gif');
     expect(originalMediaURL({ ...post('danbooru-1'), mediaType: 'video', imageUrl: 'https://cdn.donmai.us/original/a.webm' })).toContain('a.webm');
+  });
+});
+
+describe('relativeTime', () => {
+  const now = new Date('2026-10-23T12:00:00Z').getTime();
+  const ago = (seconds: number) => relativeTime(new Date(now - seconds * 1000), now);
+
+  test('七天内显示相对时间，更早显示日期，跨年带年份', () => {
+    expect(ago(30)).toBe('刚刚');
+    expect(ago(5 * 60)).toBe('5分钟前');
+    expect(ago(3 * 3600)).toBe('3小时前');
+    expect(ago(86400)).toBe('昨天');
+    expect(ago(8 * 86400)).toBe('10月15日');
+    expect(relativeTime(new Date('2025-03-02T12:00:00Z'), now)).toBe('2025年3月2日');
   });
 });

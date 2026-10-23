@@ -17,11 +17,12 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
   const appTsx = readFileSync(appPath, 'utf-8');
 
   describe('1. 768px 版心重构规范', () => {
-    test('媒体查询 @media (min-width: 768px) 下采用 200px 固定侧栏与 1200px 居中版心', () => {
+    test('媒体查询 @media (min-width: 768px) 下采用 200px 固定侧栏与居中版心', () => {
       expect(css).toContain('@media (min-width: 768px)');
-      // app-shell 具备 200px 侧栏 + 1200px 最大版心，居中及 16px 边距
+      // app-shell 为 200px 侧栏 + 24px 间距 + 600px 内容列（含两侧 16px 边距共 856px），整体居中
       expect(css).toMatch(/\.app-shell\s*\{[^}]*grid-template-columns:\s*200px minmax\(0,\s*1fr\);/);
-      expect(css).toMatch(/\.app-shell\s*\{[^}]*max-width:\s*1200px;/);
+      expect(css).toMatch(/\.app-shell\s*\{[^}]*column-gap:\s*24px;/);
+      expect(css).toMatch(/\.app-shell\s*\{[^}]*max-width:\s*856px;/);
       expect(css).toMatch(/\.app-shell\s*\{[^}]*margin:\s*0 auto;/);
       expect(css).toMatch(/\.app-shell\s*\{[^}]*padding:\s*0 16px;/);
       // navigation 声明 width: 200px
@@ -30,8 +31,9 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
       expect(css).not.toContain('padding: 0 15%;');
     });
 
-    test('桌面端 768px 栅格留白对称性：.feed 在宽屏下配置 padding-left: 24px 与 padding-right: 8px 保证两端留白均等', () => {
-      expect(css).toMatch(/@media\s*\(min-width:\s*768px\)[\s\S]*?\.feed\s*\{[^}]*padding:\s*0 8px 0 24px;/);
+    test('列表、详情与设置共用 600px 内容列，切换页面版心不跳动', () => {
+      expect(css).toMatch(/\.feed\s*\{[^}]*max-width:\s*600px;/);
+      expect(css).toMatch(/\.settings\s*\{[^}]*max-width:\s*600px;/);
     });
   });
 
@@ -57,7 +59,7 @@ describe('768px 版心重构、吸顶安全区与全局高对比度无障碍 (Is
       expect(css).toMatch(/\.post-card\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,\s*1fr\);/);
       expect(css).toMatch(/@media\s*\(max-width:\s*479px\)[\s\S]*?\.post-card\s*\{[^}]*grid-template-columns:\s*36px minmax\(0,\s*1fr\);/);
       expect(css).toMatch(/\.post-tag\s*\{[^}]*color:\s*var\(--accent\);/);
-      expect(css).toMatch(/\.post-media-track\s*\{[^}]*border-radius:\s*8px;/);
+      expect(css).toMatch(/\.post-media-track\s*\{[^}]*border-radius:\s*14px;/);
     });
   });
 

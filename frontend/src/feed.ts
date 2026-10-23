@@ -87,7 +87,21 @@ export function postSource(id: string): { label: string; href?: string } {
   return { label: id };
 }
 
-const LOW_RES_MEDIA = /\/(samples?|preview|thumbnails?|\d+x\d+)\/|sample_|thumbnail_|\/(sample|thumbnail)[_-]/i;
+const RELATIVE_UNITS = [['day', 86400], ['hour', 3600], ['minute', 60]] as const;
+
+// 七天内显示相对时间（刚刚、5 分钟前、昨天），更早显示日期；完整时间放在 title。
+export function relativeTime(date: Date, now = Date.now()): string {
+  const seconds = (date.getTime() - now) / 1000;
+  if (Math.abs(seconds) < 60) return '刚刚';
+  if (Math.abs(seconds) < 7 * 86400) {
+    const [unit, size] = RELATIVE_UNITS.find(([, size]) => Math.abs(seconds) >= size)!;
+    return new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' }).format(Math.round(seconds / size), unit);
+  }
+  const sameYear = date.getFullYear() === new Date(now).getFullYear();
+  return date.toLocaleDateString('zh-CN', sameYear ? { month: 'long', day: 'numeric' } : { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+const LOW_RES_MEDIA =/\/(samples?|preview|thumbnails?|\d+x\d+)\/|sample_|thumbnail_|\/(sample|thumbnail)[_-]/i;
 
 export function originalMediaURL(post: Post): string {
   const candidates = [post.originalUrl, post.imageUrl].filter((item): item is string => typeof item === 'string' && item.length > 0);

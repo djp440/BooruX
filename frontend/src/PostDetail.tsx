@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import PostCard from './PostCard';
-import { postSource } from './feed';
+import { SkeletonCard } from './PostFeed';
+import { Icon } from './icons';
+import { postSource, relativeTime } from './feed';
 import { commentKey, commentTextParts, commentsComplete, commentsNeedReload, createComments, fetchCommentPage, loadComments } from './comments';
 import type { PostDetailData } from './comments';
 import { beginRestore, capturePosition, restorePosition, usePageSession } from './page-session';
@@ -120,31 +122,50 @@ export default function PostDetail() {
   }, [verified, detail]);
 
   return <section className="post-detail feed" aria-label="帖子详情">
-    <header className="detail-header"><button onClick={back} aria-label="返回列表">← 返回</button><h1>帖子详情</h1></header>
-    {!verified && !error && <p role="status">正在加载帖子详情…</p>}
-    {error && <div role="alert"><p>{detail ? '详情更新失败，正在显示缓存内容。' : error}</p><button onClick={() => setAttempt(value => value + 1)}>重试</button></div>}
+    <header className="detail-header"><button className="icon-button" onClick={back} aria-label="返回列表" title="返回列表"><Icon name="back" /></button><h1>帖子详情</h1></header>
+    {!verified && !error && <><p role="status" className="visually-hidden">正在加载帖子详情…</p><SkeletonCard /></>}
+    {error && (detail ? (
+      <div className="inline-alert" role="alert"><Icon name="alert" /><p>详情更新失败，正在显示缓存内容。</p><button className="button" onClick={() => setAttempt(value => value + 1)}>重试</button></div>
+    ) : (
+      <div className="empty-state" role="alert">
+        <span className="empty-icon"><Icon name="alert" /></span>
+        <p className="empty-title">{error}</p>
+        <div className="empty-actions">
+          <button className="button primary" onClick={() => setAttempt(value => value + 1)}>重试</button>
+          <button className="button" onClick={back}>返回列表</button>
+        </div>
+      </div>
+    ))}
     {verified && detail && <>
       <PostCard id={detail.groupId} posts={detail.posts} trusted onComments={focusComments} />
       {!detail.familyComplete && <p className="post-notice">仅显示本地关联帖子，帖子组可能不完整。</p>}
       <section className="comments" ref={commentsRegion} tabIndex={-1} aria-label="原站评论">
-        <h2>原站评论</h2>
-        <p className="comment-note">整组评论按时间最新优先，仅供阅读。</p>
-        {detail.commentsAvailability === 'local-only' ? <p role="status">仅本地数据模式，原站评论不可用。</p> : detail.commentsAvailability === 'unsupported' ? <p role="status">此来源暂不支持原站评论。</p> : comments && <>
-          {comments.displayed.map(comment => <article className="comment" key={commentKey(comment)} data-comment-key={commentKey(comment)}>
-            <header className="comment-header">
-              <strong>{comment.author?.trim() || '匿名用户'}</strong>
-              <time dateTime={comment.createdAt}>{new Date(comment.createdAt).toLocaleString('zh-CN')}</time>
-              <a href={comment.sourceUrl} target="_blank" rel="noreferrer noopener">{postSource(comment.postId).label} · 原站评论 #{comment.id}</a>
-            </header>
-            <p className="comment-body">{commentTextParts(comment.body).map((part, index) => part.href ? <a key={index} href={part.href} target="_blank" rel="noreferrer noopener">{part.text}</a> : part.text)}</p>
-          </article>)}
+        <div className="comments-heading">
+          <h2>原站评论</h2>
+          <p className="comment-note">整组评论按时间最新优先，仅供阅读。</p>
+        </div>
+        {detail.commentsAvailability === 'local-only' ? <p className="comment-empty" role="status">仅本地数据模式，原站评论不可用。</p> : detail.commentsAvailability === 'unsupported' ? <p className="comment-empty" role="status">此来源暂不支持原站评论。</p> : comments && <>
+          {comments.displayed.map(comment => {
+            const author = comment.author?.trim() || '匿名用户';
+            const created = new Date(comment.createdAt);
+            const valid = Number.isFinite(created.getTime());
+            return <article className="comment" key={commentKey(comment)} data-comment-key={commentKey(comment)}>
+              <header className="comment-header">
+                <span className="comment-avatar" aria-hidden="true">{Array.from(author)[0]}</span>
+                <strong>{author}</strong>
+                <time dateTime={comment.createdAt} title={valid ? created.toLocaleString('zh-CN') : undefined}>{valid ? relativeTime(created) : comment.createdAt}</time>
+                <a href={comment.sourceUrl} target="_blank" rel="noreferrer noopener">{postSource(comment.postId).label} · 评论 #{comment.id}</a>
+              </header>
+              <p className="comment-body">{commentTextParts(comment.body).map((part, index) => part.href ? <a key={index} href={part.href} target="_blank" rel="noreferrer noopener">{part.text}</a> : part.text)}</p>
+            </article>;
+          })}
           <div className="comment-status" aria-live="polite">
-            {comments.streams.filter(stream => stream.error).map(stream => <p role="alert" key={stream.memberId}>{postSource(stream.memberId).label} 的评论暂缺：{stream.error}</p>)}
-            {comments.streams.some(stream => stream.error) && <button disabled={busy} onClick={() => void load(true)}>{commentsNeedReload(comments) ? '重新加载评论' : '重试缺失评论'}</button>}
-            {busy && <p role="status">正在加载原站评论…</p>}
-            {!busy && !comments.displayed.length && commentsComplete(comments) && <p>暂无评论。</p>}
-            {!busy && comments.displayed.length > 0 && detail.familyComplete && commentsComplete(comments) && <p>已加载全部评论</p>}
-            {!busy && !commentsComplete(comments) && comments.streams.some(stream => !stream.error && (!stream.exhausted || stream.buffer.length > 0)) && <button onClick={() => void load()}>加载更多评论</button>}
+            {comments.streams.filter(stream => stream.error).map(stream => <p className="inline-alert" role="alert" key={stream.memberId}><Icon name="alert" />{postSource(stream.memberId).label} 的评论暂缺：{stream.error}</p>)}
+            {comments.streams.some(stream => stream.error) && <button className="button" disabled={busy} onClick={() => void load(true)}>{commentsNeedReload(comments) ? '重新加载评论' : '重试缺失评论'}</button>}
+            {busy && <p className="comment-loading" role="status"><span className="spinner" aria-hidden="true" />正在加载原站评论…</p>}
+            {!busy && !comments.displayed.length && commentsComplete(comments) && <p className="comment-empty">暂无评论。</p>}
+            {!busy && comments.displayed.length > 0 && detail.familyComplete && commentsComplete(comments) && <p className="feed-end">已加载全部评论</p>}
+            {!busy && !commentsComplete(comments) && comments.streams.some(stream => !stream.error && (!stream.exhausted || stream.buffer.length > 0)) && <button className="button load-more" onClick={() => void load()}>加载更多评论</button>}
           </div>
         </>}
       </section>

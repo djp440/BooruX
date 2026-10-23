@@ -174,7 +174,7 @@ describe('卡片手势无障碍、选区精准化与外链安全加固', () => {
         )
       );
 
-      expect(htmlWithoutSource).toContain('<span>unknown-999</span>');
+      expect(htmlWithoutSource).toContain('<span class="post-source">unknown-999</span>');
       // header 中不应包含指向 unknown 的 <a>
       expect(htmlWithoutSource).not.toContain('href="undefined"');
     });
