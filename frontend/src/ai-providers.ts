@@ -49,6 +49,17 @@ const readMain = (data: { selection?: { providerId?: string | null; modelId?: st
 export const fetchMainModel = () => request<Parameters<typeof readMain>[0]>('/api/profiles/default/chat').then(readMain);
 export const setMainModel = (main: MainModel) => request<Parameters<typeof readMain>[0]>('/api/profiles/default/chat', 'PUT', main ?? { providerId: '', modelId: '' }).then(readMain);
 
+// 推理强度与后端 reasoningEfforts 一致；空值表示不发送，由供应商决定。
+export const EFFORT_OPTIONS = [
+  { value: '', label: '默认' }, { value: 'none', label: '关闭' }, { value: 'minimal', label: '极简' }, { value: 'low', label: '低' },
+  { value: 'medium', label: '中' }, { value: 'high', label: '高' }, { value: 'xhigh', label: '极高' }, { value: 'max', label: '最大' },
+] as const;
+type Effort = { selection?: { reasoningEffort?: string } };
+const readEffort = (data: Effort) => data.selection?.reasoningEffort ?? '';
+export const fetchReasoningEffort = () => request<Effort>('/api/profiles/default/chat').then(readEffort);
+export const setReasoningEffort = (main: NonNullable<MainModel>, effort: string) =>
+  request<Effort>('/api/profiles/default/chat', 'PUT', { ...main, reasoningEffort: effort }).then(readEffort);
+
 export const addedModels = (provider: Provider) => provider.models.filter(model => model.manual === 1);
 
 export function candidateModels(provider: Provider, query: string): Model[] {

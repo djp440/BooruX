@@ -379,6 +379,21 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, M{"success": true})
 	}))
+	mux.HandleFunc("POST "+convs+"/{cid}/fork", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
+		c, err := rt.fork(pid, cid, str(readBody(r)["runId"]))
+		if err != nil {
+			jerr(w, 409, err.Error())
+			return
+		}
+		writeJSON(w, 201, M{"conversation": c})
+	}))
+	mux.HandleFunc("GET "+convs+"/{cid}/export", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
+		title, md := rt.exportMarkdown(pid, cid)
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+urlPathEscape(exportName(title))+".md")
+		w.Header().Set("Cache-Control", "private, no-store")
+		_, _ = w.Write([]byte(md))
+	}))
 	mux.HandleFunc("POST "+convs+"/{cid}/runs", conv(func(w http.ResponseWriter, r *http.Request, pid, cid string) {
 		b := readBody(r)
 		var ids []string
@@ -392,6 +407,19 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 				ids = append(ids, sx)
 			}
 		}
+		var postIDs []string
+		if arr, ok := b["postIds"].([]any); ok {
+			seen := map[string]bool{}
+			for _, x := range arr {
+				sx, isStr := x.(string)
+				if !isStr || sx == "" || seen[sx] || len(arr) > 8 {
+					jerr(w, 409, "每条消息最多引用 8 件作品，不能重复")
+					return
+				}
+				seen[sx] = true
+				postIDs = append(postIDs, sx)
+			}
+		}
 		text, _ := b["text"].(string)
 		if b["text"] != nil && text == "" {
 			if _, isStr := b["text"].(string); !isStr {
@@ -400,7 +428,7 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 			}
 		}
 		reqID, _ := b["requestId"].(string)
-		run, err := rt.create(pid, cid, reqID, text, ids)
+		run, err := rt.create(pid, cid, reqID, text, ids, postIDs)
 		if err != nil {
 			jerr(w, 409, err.Error())
 			return
@@ -422,7 +450,16 @@ func (s *server) chatRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, M{"success": true})
 	}))
 	mux.HandleFunc("POST "+convs+"/{cid}/runs/{id}/retry", run(func(w http.ResponseWriter, r *http.Request, pid, id string) {
-		out, err := rt.retry(pid, id)
+		var text *string
+		if v := readBody(r)["text"]; v != nil {
+			s, isStr := v.(string)
+			if !isStr {
+				jerr(w, 409, "消息或请求标识无效")
+				return
+			}
+			text = &s
+		}
+		out, err := rt.retry(pid, id, text)
 		if err != nil {
 			jerr(w, 409, err.Error())
 			return

@@ -175,13 +175,16 @@ func (a *Attachments) validate(profileID string, ids []string, runID string) ([]
 	return out, nil
 }
 
+// bind 只通过 q（通常是事务）执行；调用方需先在事务外 validate。
+// 数据库是单连接，事务内再用 a.db 查询会死锁。
 func (a *Attachments) bind(q querier, profileID string, ids []string, runID string) error {
-	if _, err := a.validate(profileID, ids, runID); err != nil {
-		return err
-	}
 	for _, id := range ids {
-		if _, err := q.Exec("UPDATE ai_attachments SET runId=? WHERE id=? AND profileId=?", runID, id, profileID); err != nil {
+		res, err := q.Exec("UPDATE ai_attachments SET runId=? WHERE id=? AND profileId=? AND (runId IS NULL OR runId=?)", runID, id, profileID, runID)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return errors.New("附件已用于其他消息")
 		}
 	}
 	return nil

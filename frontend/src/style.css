@@ -2379,9 +2379,47 @@ a.post-avatar {
 }
 
 .chat-user-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.chat-user-quote { position: relative; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer; }
+.chat-user-quote span,
+.chat-draft-tag {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+}
 .chat-user-images img { width: 96px; height: 96px; border-radius: 14px; object-fit: cover; background: var(--media-bg); }
 
 .chat-message.assistant { display: grid; gap: 10px; }
+
+/* 消息操作条：触屏常显；精确指针设备上悬停消息才显示（最后一轮常显）。 */
+.chat-actions { display: flex; align-items: center; gap: 2px; margin: -2px 0 0 -6px; transition: opacity 150ms ease; }
+.chat-message.user .chat-actions { margin: -2px -6px 0 0; justify-self: end; }
+.chat-actions .icon-button { width: 30px; height: 30px; margin: 0; color: var(--muted); transition: color 150ms ease, background-color 150ms ease; }
+.chat-actions .icon-button:disabled { opacity: 0.4; cursor: default; }
+.chat-actions .icon { width: 16px; height: 16px; }
+
+/* 编辑并重发：气泡内联编辑 */
+.chat-edit { display: grid; gap: 8px; width: 100%; }
+.chat-edit textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: none;
+}
+.chat-edit textarea:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+.chat-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.chat-edit-actions .button { min-height: 36px; padding: 0 16px; }
 
 /* Markdown 正文 */
 .chat-markdown { font-size: 15px; line-height: 1.7; }
@@ -2590,7 +2628,8 @@ a.post-avatar {
   font-size: 11px;
 }
 
-.chat-post-detail {
+.chat-post-detail,
+.chat-post-quote {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -2607,7 +2646,13 @@ a.post-avatar {
   transition: opacity 150ms ease;
 }
 
-.chat-post-detail .icon { width: 15px; height: 15px; }
+.chat-post-detail .icon,
+.chat-post-quote .icon { width: 15px; height: 15px; }
+
+/* 引用按钮在右下角；已引用时以强调色常显。 */
+.chat-post-quote { top: auto; bottom: 4px; }
+.chat-post-quote .icon { stroke-width: 2.4; }
+.chat-post-quote[data-quoted] { background: var(--accent); cursor: default; opacity: 1 !important; }
 
 .chat-tool-detail { padding: 10px 12px 12px; border-top: 1px solid var(--border); }
 .chat-tool-detail p { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -2699,8 +2744,10 @@ a.post-avatar {
 .chat-composer-bar .icon-button { width: 36px; height: 36px; margin: 0; color: var(--muted-strong); }
 .chat-composer-bar .icon-button:disabled { opacity: 0.4; cursor: default; }
 
-.chat-model { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.chat-model { position: relative; display: inline-flex; flex: 0 1 auto; align-items: center; min-width: 0; }
 .chat-model select {
+  width: 100%;
+  min-width: 0;
   max-width: 220px;
   padding: 6px 28px 6px 12px;
   border: 0;
@@ -2713,6 +2760,8 @@ a.post-avatar {
   appearance: none;
   cursor: pointer;
 }
+
+.chat-effort select { max-width: 120px; }
 
 .chat-model .icon { position: absolute; right: 8px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
 
@@ -2917,6 +2966,7 @@ a.post-avatar {
   .chat-message,
   .chat-run-error { animation: chat-in 240ms var(--ease-out); }
   .chat-drawer { animation: drawer-in 220ms var(--ease-out); transform-origin: top; }
+  .chat-reasoning[open] p { animation: chat-in 200ms var(--ease-out); }
 }
 
 @keyframes chat-in { from { opacity: 0; transform: translateY(4px); } }
@@ -2938,10 +2988,18 @@ a.post-avatar {
   .chat-drawer-list li:not([data-current]):hover { background: var(--surface-hover); }
   .chat-post:hover img { transform: scale(1.04); }
   .chat-post-detail,
+  .chat-post-quote,
   .chat-code-copy,
-  .chat-drawer-list li:not([data-current]) .chat-drawer-actions { opacity: 0; }
+  .chat-drawer-list li:not([data-current]) .chat-drawer-actions,
+  .chat-actions:not([data-sticky]) { opacity: 0; }
+  .chat-message:hover .chat-actions,
+  .chat-actions:focus-within,
+  .chat-actions .icon-button:hover { opacity: 1; }
+  .chat-actions .icon-button:not(:disabled):hover { background: var(--subtle); color: var(--text); }
   .chat-posts li:hover .chat-post-detail,
+  .chat-posts li:hover .chat-post-quote,
   .chat-post-detail:focus-visible,
+  .chat-post-quote:focus-visible,
   .chat-code:hover .chat-code-copy,
   .chat-code-copy:focus-visible,
   .chat-drawer-list li:hover .chat-drawer-actions,
