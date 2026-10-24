@@ -6,6 +6,7 @@ import { isFresh, readPostCache, writePostCache } from './post-cache';
 import { useBookmarks } from './Bookmarks';
 import { Icon } from './icons';
 import MediaViewer from './MediaViewer';
+import { useMediaSwipe } from './media-swipe';
 
 // 普通左键点击才拦截为应用内行为；中键与修饰键保留链接的新标签页打开。
 const isPlainClick = (event: MouseEvent) => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -96,6 +97,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   const [cached, setCached] = useState(initialCache?.data.source === 'sqlite');
   const [attempt, setAttempt] = useState(0);
   const [viewing, setViewing] = useState<number | null>(null);
+  const track = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!needsFamily || (attempt === 0 && initialCache && isFresh(initialCache))) return;
@@ -134,6 +136,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
   const createdAt = typeof primary.createdAt === 'string' && primary.createdAt ? new Date(primary.createdAt) : null;
   const date = createdAt && Number.isFinite(createdAt.getTime()) ? createdAt : null;
   const aspectRatio = primary.aspectRatio && Number.isFinite(primary.aspectRatio) && primary.aspectRatio > 0 ? primary.aspectRatio : undefined;
+  useMediaSwipe(track, posts.length);
 
   return (
     <article
@@ -204,6 +207,7 @@ export default function PostCard({ id, posts: seed, trusted = false, onOpen, onC
         )}
         {cached && <p className="post-notice">仅显示本地缓存，关联媒体可能不完整。</p>}
         <div
+          ref={track}
           className="post-media-track"
           style={{ aspectRatio }}
           tabIndex={posts.length > 1 ? 0 : -1}
