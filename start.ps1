@@ -70,6 +70,14 @@ if ($NeedsBuild) {
 # 3. 启动 Go 后端服务
 Write-Host "🚀 [2/2] 正在启动 BooruX 全栈服务..." -ForegroundColor Cyan
 Write-Host "🌐 访问地址: http://127.0.0.1:$Port" -ForegroundColor Green
+# 只列有默认网关的网卡，排除 VirtualBox/WSL 等虚拟网卡
+$LanIPs = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPv4DefaultGateway -and $_.IPv4Address } |
+    ForEach-Object { $_.IPv4Address.IPAddress }
+foreach ($ip in $LanIPs) {
+    Write-Host "📱 局域网地址: http://${ip}:$Port" -ForegroundColor Green
+}
+Write-Host "💡 手机无法访问时，请在 Windows 防火墙中允许 booruX.exe 通过「专用网络」（首次启动会弹窗询问）" -ForegroundColor DarkGray
 Write-Host "💡 提示: 按 Ctrl+C 可随时停止服务`n" -ForegroundColor DarkGray
 
 Push-Location $ServerDir
@@ -77,7 +85,12 @@ try {
     if ($Port) {
         $env:PORT = $Port
     }
-    go run .
+    # 编译到固定路径再运行：go run 每次产物路径不同，会导致 Windows 防火墙反复询问
+    go build -o booruX.exe .
+    if ($LASTEXITCODE -ne 0) {
+        throw "后端编译失败，退出码: $LASTEXITCODE"
+    }
+    .\booruX.exe
 } finally {
     Pop-Location
 }
