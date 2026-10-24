@@ -1076,13 +1076,30 @@ a.post-avatar {
   aspect-ratio: 4 / 3;
   max-height: min(70svh, 680px);
   overflow-x: auto;
+  /* 必须显式关闭纵向滚动：overflow-x 非 visible 时 overflow-y 会算作 auto，
+     小数高度带来的亚像素溢出会让 iOS 把纵向手势锁在轨道上回弹，页面不滚。 */
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
+  /* 触屏纵向手势交给页面滚动，横滑由 useMediaSwipe 跟手处理。 */
+  touch-action: pan-y pinch-zoom;
   scrollbar-width: none;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--media-bg);
   cursor: auto;
+}
+
+.post-media-track[data-dragging] {
+  scroll-snap-type: none;
+}
+
+/* iOS Safari 不可靠地遵守滚动容器上的 touch-action，斜向手势仍会锁定到横向轨道；
+   触屏设备上禁止原生横滚，横向只由 useMediaSwipe 的 touch 事件驱动（scrollLeft/scrollIntoView 仍可用）。 */
+@media (hover: none) and (pointer: coarse) {
+  .post-media-track {
+    overflow: hidden;
+  }
 }
 
 .post-media-track::-webkit-scrollbar {
